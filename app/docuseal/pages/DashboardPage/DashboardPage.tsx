@@ -111,7 +111,6 @@ const DashboardPage = () => {
     // Refresh user data to get updated 2FA status
     await refreshUser();
 
-    console.log('User after refresh:', user?.two_factor_enabled);
 
     // Force re-check of 2FA requirements by triggering useEffect
     // We can do this by temporarily setting requires2FA to trigger re-evaluation
@@ -128,8 +127,6 @@ const DashboardPage = () => {
   const filteredTemplates = templates.filter(template =>
     template.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  // Show 2FA setup if required
-  console.log('DashboardPage render, requires2FA:', requires2FA, 'loading:', loading, 'templates length:', templates.length);
   if (requires2FA) {
     console.log('Showing 2FA setup screen');
     return <TwoFactorSetup onSuccess={handle2FASuccess} />;
