@@ -43,3 +43,12 @@ totp-rs = { version = "5.4", features = ["qr"] }
 anyhow = "1.0"
 base32 = "0.5.1"
 md5 = "0.7"
+x509-parser = "0.16"
+openssl = { version = "0.10", features = ["vendored"] }
+openssl-sys = { version = "0.9", features = ["vendored"] }
+cms = "0.2"
+x509-cert = "0.2"
+rsa = "0.9"
+pkcs8 = "0.10"
+der = "0.7"
+spki = "0.7"

@@ -6,3 +6,4 @@ pub mod signature;
 pub mod role;
 pub mod email_template;
 pub mod account;
+pub mod certificate;

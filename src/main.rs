@@ -189,6 +189,13 @@ async fn main() {
         }
     }
 
+    // Initialize CA infrastructure for digital signatures
+    println!("Initializing CA infrastructure for digital signatures...");
+    if let Err(e) = crate::services::digital_signature::initialize_ca_infrastructure(&pool).await {
+        eprintln!("⚠️  Warning: Failed to initialize CA infrastructure: {}", e);
+        eprintln!("⚠️  Digital signatures may not work properly");
+    }
+
     // Initialize services
     let db_pool_arc = Arc::new(Mutex::new(pool.clone()));
     let payment_queue = PaymentQueue::new(db_pool_arc.clone());

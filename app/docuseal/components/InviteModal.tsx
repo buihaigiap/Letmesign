@@ -1,5 +1,7 @@
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Box, Typography } from '@mui/material';
+import { ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import CreateTemplateButton from './CreateTemplateButton';
 
 interface InviteModalProps {
@@ -9,6 +11,7 @@ interface InviteModalProps {
   onPartnerEmailsChange: (emails: Record<string, string>) => void;
   onSubmit: (e: React.FormEvent) => void;
   loading?: boolean;
+  id: string;
 }
 
 const InviteModal: React.FC<InviteModalProps> = ({
@@ -17,8 +20,10 @@ const InviteModal: React.FC<InviteModalProps> = ({
   partnerEmails,
   onPartnerEmailsChange,
   onSubmit,
-  loading = false
+  loading = false,
+  id
 }) => {
+  const navigate = useNavigate();
   return (
     <Dialog
       open={open}
@@ -29,22 +34,33 @@ const InviteModal: React.FC<InviteModalProps> = ({
       <form onSubmit={onSubmit}>
         <DialogTitle>Invite Signers</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            {Object.keys(partnerEmails).map((partner) => (
-              <div key={partner}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>{partner}</Typography>
-                <TextField
-                  type="email"
-                  placeholder="Email Address"
-                  value={partnerEmails[partner]}
-                  onChange={(e) => onPartnerEmailsChange({...partnerEmails, [partner]: e.target.value})}
-                  required
-                  fullWidth
-                  size="small"
-                />
-              </div>
-            ))}
-          </Box>
+          {Object.keys(partnerEmails).length === 0 ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <Typography variant="body1" sx={{ mb: 2 }}>Create a field to send the request</Typography>
+              <ArrowRight
+                size={24}
+                onClick={() => navigate(`/templates/${id}/editor`)}
+                style={{ cursor: 'pointer' }}
+              />
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+              {Object.keys(partnerEmails).map((partner) => (
+                <div key={partner}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>{partner}</Typography>
+                  <TextField
+                    type="email"
+                    placeholder="Email Address"
+                    value={partnerEmails[partner]}
+                    onChange={(e) => onPartnerEmailsChange({...partnerEmails, [partner]: e.target.value})}
+                    required
+                    fullWidth
+                    size="small"
+                  />
+                </div>
+              ))}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
            <Button

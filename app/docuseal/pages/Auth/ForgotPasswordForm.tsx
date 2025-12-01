@@ -39,12 +39,10 @@ const ForgotPasswordForm: React.FC = () => {
                     setStep('reset');
                     setSuccess('');
                 }, 2000);
-            } else {
-                setError(data.message || 'Failed to send reset code');
-            }
+            }   
         } catch (err) {
             console.error('API Error:', err);
-            setError('An error occurred. Please try again.');
+            setError(err?.error);
         } finally {
             setLoading(false);
         }

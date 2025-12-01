@@ -327,7 +327,12 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
 
       <Dialog
         open={showMoveModal} 
-        onClose={() => setShowMoveModal(false)} 
+        onClose={() => (
+          setShowMoveModal(false)
+          setNewFolderName('')
+          setSelectedFolderId(null)
+          setSelectedValue(null
+        )} 
         maxWidth="sm" fullWidth
        >
         <DialogTitle>Move Template</DialogTitle>

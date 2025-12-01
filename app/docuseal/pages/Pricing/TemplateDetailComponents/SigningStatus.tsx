@@ -22,7 +22,6 @@ const SigningStatus: React.FC<SigningStatusProps> = ({
   setShowInviteModal,
 }) => {
   const { t } = useTranslation();
-  console.log('templateInfo in SigningStatus:', templateInfo);
   return (
     <div className="mt-6">
       {templateInfo.signatures && templateInfo.signatures.length > 0 ? (

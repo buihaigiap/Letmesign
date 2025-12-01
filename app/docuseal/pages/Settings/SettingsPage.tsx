@@ -7,6 +7,7 @@ import TeamSettings from './Activate/TeamSettings';
 import ReminderSettingsPage from './ReminderSettings/ReminderSettingsPage';
 import GeneralSettings from './GeneralSettings';
 import PersonalizationPage from './Personalization';
+import PDFSignaturePage from './PDFSignature/PDFSignaturePage';
 
 const SettingsPage = () => {
   const { t } = useTranslation();
@@ -19,6 +20,7 @@ const SettingsPage = () => {
     { text: 'Team Accounts', path: '/settings/team' },
     { text: t('navigation.reminders'), path: '/settings/reminders' },
     { text: 'Personalization', path: '/settings/personalization' },
+    { text: 'PDF Signature', path: '/settings/pdf-signature' },
   ];
 
   return (
@@ -47,6 +49,7 @@ const SettingsPage = () => {
             <Route path="team" element={<TeamSettings />} />
             <Route path="reminders" element={<ReminderSettingsPage />} />
             <Route path="personalization" element={<PersonalizationPage />} />
+            <Route path="pdf-signature" element={<PDFSignaturePage />} />
             <Route index element={<Navigate to="general" replace />} />
           </Routes>
         </Paper>

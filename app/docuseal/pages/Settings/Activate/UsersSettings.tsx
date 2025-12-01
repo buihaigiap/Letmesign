@@ -72,24 +72,33 @@ const UsersSettings = () => {
   };
 
   const handleSubmit = async () => {
+    if (!formData.name.trim() || !formData.email.trim() || !formData.role) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
     setLoading(true);
     try {
       let response;
       if (editingUser) {
         response = await upstashService.updateTeam(editingUser.id, {
-          name: formData.name,
-          email: formData.email,
+          name: formData.name.trim(),
+          email: formData.email.trim(),
           role: formData.role
         });
       } else {
         response = await upstashService.addTeam({
-          email: formData.email,
-          name: formData.name,
+          email: formData.email.trim(),
+          name: formData.name.trim(),
           role: formData.role
         });
       }
       if (response.success) {
-        const emailChanged = editingUser && editingUser.email !== formData.email;
+        const emailChanged = editingUser && editingUser.email !== formData.email.trim();
         toast.success(editingUser ? (emailChanged ? 'User updated and invitation email resent' : 'User updated successfully') : 'User added successfully');
         // Refetch users
         const fetchResponse = await upstashService.getUserAccounts();

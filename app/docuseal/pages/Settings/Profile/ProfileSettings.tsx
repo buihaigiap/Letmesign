@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Typography, Box, TextField, Button } from '@mui/material';
+import { Typography, Box, TextField, Button, IconButton } from '@mui/material';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import upstashService from '../../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 import CreateTemplateButton from '@/components/CreateTemplateButton';
@@ -15,6 +17,9 @@ const ProfileSettings = () => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -37,6 +42,10 @@ const ProfileSettings = () => {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('Please fill in all fields');
+      return;
+    }
     if (newPassword !== confirmPassword) {
       toast.error('New passwords do not match');
       return;
@@ -89,27 +98,57 @@ const ProfileSettings = () => {
           <Box component="form" onSubmit={handleChangePassword}>
             <TextField
               fullWidth
-              type="password"
+              type={showCurrentPassword ? 'text' : 'password'}
               label="Current Password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               sx={{ mb: 2 }}
+              InputProps={{
+                endAdornment: (
+                  <IconButton
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    edge="end"
+                  >
+                    {showCurrentPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                ),
+              }}
             />
             <TextField
               fullWidth
-              type="password"
+              type={showNewPassword ? 'text' : 'password'}
               label="New Password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               sx={{ mb: 2 }}
+              InputProps={{
+                endAdornment: (
+                  <IconButton
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    edge="end"
+                  >
+                    {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                ),
+              }}
             />
             <TextField
               fullWidth
-              type="password"
+              type={showConfirmPassword ? 'text' : 'password'}
               label="Confirm New Password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               sx={{ mb: 2 }}
+              InputProps={{
+                endAdornment: (
+                  <IconButton
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    edge="end"
+                  >
+                    {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                ),
+              }}
             />
             <CreateTemplateButton 
                text =' Change Password'

@@ -5,6 +5,7 @@ import {NotificationsActive,Email,Warning,ErrorOutline,
 } from '@mui/icons-material';
 import upstashService from '../../../ConfigApi/upstashService';
 import CreateTemplateButton from '../../../components/CreateTemplateButton';
+import toast from 'react-hot-toast';
 import { REMINDER_DURATIONS } from '../../../constants/reminderDurations';
 
 export default function ReminderSettingsPage() {
@@ -41,6 +42,7 @@ export default function ReminderSettingsPage() {
         receive_notification_on_completion: settings.receive_notification_on_completion,
         completion_notification_email: settings.completion_notification_email || null,
       });
+      toast.success('Reminder settings saved successfully');
     } finally {
       setSaving(false);
     }
@@ -164,7 +166,7 @@ export default function ReminderSettingsPage() {
 
         {/* Actions */}
         <Box display="flex" justifyContent="flex-end" gap={2} mt={4} pt={3} borderTop={1} borderColor="divider">
-           <Button
+           {/* <Button
                 onClick={fetchSettings}
                 disabled={saving}
                 variant="outlined"
@@ -178,10 +180,10 @@ export default function ReminderSettingsPage() {
             }}
             >
                 Cancel
-            </Button>
+            </Button> */}
           <CreateTemplateButton
             onClick={handleSave}
-            disabled={saving || loading}
+            disabled={saving }
             loading={saving}
             text= {saving ? 'Saving...' : 'Save Configuration'}
           />

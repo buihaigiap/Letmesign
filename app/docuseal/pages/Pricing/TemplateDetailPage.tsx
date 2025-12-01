@@ -273,6 +273,7 @@ const TemplateDetailPage = () => {
       )}
 
       <InviteModal
+        id = {id}
         open={showInviteModal}
         onClose={() => setShowInviteModal(false)}
         partnerEmails={partnerEmails}

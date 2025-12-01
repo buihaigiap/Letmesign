@@ -9,3 +9,4 @@ pub mod reminder_settings;
 pub mod global_settings;
 pub mod email_templates;
 pub mod team;
+pub mod pdf_signature;

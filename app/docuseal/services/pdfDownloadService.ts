@@ -529,7 +529,54 @@ export const downloadSignedPDF = async (
 
   // Save và download PDF
   const pdfBytesModified = await pdfDoc.save();
-  const blob = new Blob([pdfBytesModified as any], { type: 'application/pdf' });
+  
+  // Send to backend to add digital signature structure
+  try {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    const pdfBlob = new Blob([pdfBytesModified], { type: 'application/pdf' });
+    formData.append('pdf', pdfBlob, `${templateName}.pdf`);
+    formData.append('signer_email', submitterInfo?.email || 'unknown@letmesign.com');
+    formData.append('signer_name', submitterInfo?.email || submitterInfo?.id ? `User ${submitterInfo.id}` : 'Unknown Signer');
+    formData.append('reason', `Document signed via Letmesign on ${new Date().toLocaleDateString('vi-VN')}`);
+    
+    const response = await fetch('/api/pdf-signature/sign-visual-pdf', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.data?.pdf_base64) {
+        // Use digitally signed PDF
+        const signedPdfBytes = Uint8Array.from(atob(result.data.pdf_base64), c => c.charCodeAt(0));
+        const signedBlob = new Blob([signedPdfBytes], { type: 'application/pdf' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(signedBlob);
+        link.download = auditLog && auditLog.length > 0 
+          ? `signed_${templateName}_with_audit.pdf` 
+          : `signed_${templateName}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        
+        console.log('✅ PDF downloaded with digital signature structure');
+        return; // Success, exit function
+      }
+    }
+    
+    // If signing failed, log warning and continue with visual-only PDF
+    console.warn('Digital signing failed or not available, downloading visual-only PDF');
+  } catch (signError) {
+    console.error('Digital signing error:', signError);
+  }
+  
+  // Fallback: Download visual-only PDF if signing failed
+  const blob = new Blob([pdfBytesModified], { type: 'application/pdf' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = auditLog && auditLog.length > 0 
@@ -539,6 +586,8 @@ export const downloadSignedPDF = async (
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(link.href);
+  
+  console.warn('⚠️ Downloaded visual-only PDF (digital signature not added)');
 };
 
 // Generate audit log pages to append to PDF
