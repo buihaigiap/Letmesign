@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { Pagination } from '@mui/material';
 interface Folder {
   id: number;
   name: string;
@@ -63,53 +64,28 @@ const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" })
               fontSize: '1rem',
               fontWeight: '500'
             }}>
-              📁   {folder.name}
+              📁 {folder.name}
             </div>
           </Link>
         ))}
       </div>
       {totalPages > 1 && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          marginTop: '1rem',
-          gap: '1rem'
-        }}>
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            style={{
-              backgroundColor: currentPage === 1 ? 'rgba(100, 100, 100, 0.5)' : 'rgba(30, 41, 59, 0.8)',
+        <Pagination
+          count={totalPages}
+          page={currentPage}
+          onChange={(event, page) => setCurrentPage(page)}
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginTop: '1rem',
+            '& .MuiPaginationItem-root': {
               color: 'white',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '4px',
-              padding: '0.5rem 1rem',
-              cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-              transition: 'all 0.3s ease'
-            }}
-          >
-            Previous
-          </button>
-          <span style={{ color: 'white' }}>
-            Page {currentPage} of {totalPages}
-          </span>
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            style={{
-              backgroundColor: currentPage === totalPages ? 'rgba(100, 100, 100, 0.5)' : 'rgba(30, 41, 59, 0.8)',
-              color: 'white',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '4px',
-              padding: '0.5rem 1rem',
-              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-              transition: 'all 0.3s ease'
-            }}
-          >
-            Next
-          </button>
-        </div>
+            },
+            '& .Mui-selected': {
+              backgroundColor: 'rgba(30, 41, 59, 0.8)',
+            },
+          }}
+        />
       )}
     </motion.div>
   );
