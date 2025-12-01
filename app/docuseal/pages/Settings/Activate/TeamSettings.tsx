@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { PenLine, Trash, Archive, ArchiveRestore, Users, Mail } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
-
+import UpdatePro from '@/components/updatePro';
 interface TeamMember {
   id: number;
   name: string;
@@ -30,7 +30,8 @@ const TeamSettings = () => {
   const [fetchLoading, setFetchLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<TeamMember | null>(null);
   const [currentTab, setCurrentTab] = useState(0);
-
+  
+  // console.log('user' , currentUser)
   const fetchTeamMembers = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -214,7 +215,13 @@ const TeamSettings = () => {
 
   const activeTableColumns = ['Name', 'Email', 'Created At', 'Actions'];
   const archivedTableColumns = ['Name', 'Email', 'Archived At', 'Actions'];
-
+  if (currentUser?.subscription_status === 'free') {
+    return (
+      <>
+        <UpdatePro />
+      </>
+    )
+  }
   return (
     <Box>
       <Box display='flex' alignItems='center' justifyContent='space-between' mb={3}>
