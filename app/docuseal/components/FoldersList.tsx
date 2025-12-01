@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 interface Folder {
@@ -12,6 +12,13 @@ interface FoldersListProps {
   title?: string;
 }
 const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" }) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(folders.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentFolders = folders.slice(indexOfFirstItem, indexOfLastItem);
+
   if (folders.length === 0) return null;
 
   return (
@@ -27,7 +34,7 @@ const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" })
         gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
         gap: '1rem',
       }}>
-        {folders.map((folder) => (
+        {currentFolders.map((folder) => (
           <Link
             key={folder.id}
             to={`/folders/${folder.id}`}
@@ -61,6 +68,49 @@ const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" })
           </Link>
         ))}
       </div>
+      {totalPages > 1 && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginTop: '1rem',
+          gap: '1rem'
+        }}>
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            style={{
+              backgroundColor: currentPage === 1 ? 'rgba(100, 100, 100, 0.5)' : 'rgba(30, 41, 59, 0.8)',
+              color: 'white',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '4px',
+              padding: '0.5rem 1rem',
+              cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            Previous
+          </button>
+          <span style={{ color: 'white' }}>
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            style={{
+              backgroundColor: currentPage === totalPages ? 'rgba(100, 100, 100, 0.5)' : 'rgba(30, 41, 59, 0.8)',
+              color: 'white',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '4px',
+              padding: '0.5rem 1rem',
+              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            Next
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 };

@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-  Drawer,
-  Box,
-  Typography,
-  Button,
-} from '@mui/material';
+import {Drawer,Box,Typography,Button} from '@mui/material';
 import { Download as DownloadIcon, Email as EmailIcon } from '@mui/icons-material';
 import CreateTemplateButton from '@/components/CreateTemplateButton';
 import { downloadSignedPDF } from '../../services/pdfDownloadService';
