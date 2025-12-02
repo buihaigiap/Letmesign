@@ -19,6 +19,10 @@ use crate::{
         PDFVerificationResult, PDFSignatureDetails,
     },
     database::queries::UserQueries,
+    services::digital_signature::{
+        parse_pkcs12_certificate, encrypt_password, extract_certificate_info,
+        create_pkcs7_signature_with_cert, calculate_byte_range, verify_password,
+    },
 };
 
 /// Parse PDF date format: D:YYYYMMDDHHmmSSOHH'mm'
@@ -778,14 +782,21 @@ pub async fn upload_certificate(
     
     let mut certificate_data: Option<Vec<u8>> = None;
     let mut file_name: Option<String> = None;
+    let mut password: Option<String> = None;
 
     // Parse multipart form data
     while let Some(field) = multipart.next_field().await.unwrap_or(None) {
         let name = field.name().unwrap_or("").to_string();
         
-        if name == "certificate" {
-            file_name = field.file_name().map(|s| s.to_string());
-            certificate_data = Some(field.bytes().await.unwrap_or_default().to_vec());
+        match name.as_str() {
+            "certificate" => {
+                file_name = field.file_name().map(|s| s.to_string());
+                certificate_data = Some(field.bytes().await.unwrap_or_default().to_vec());
+            },
+            "password" => {
+                password = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
+            },
+            _ => {}
         }
     }
 
@@ -812,10 +823,72 @@ pub async fn upload_certificate(
 
     let fingerprint = format!("{:x}", md5::compute(&certificate_data));
 
+    // Handle PKCS#12 files (.p12/.pfx)
+    let (issuer, subject, serial_number, valid_from, valid_to, encrypted_password, private_key_pem) = 
+    if certificate_type == "p12" || certificate_type == "pfx" {
+        // Require password for PKCS#12 files
+        let password = password.ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Password is required for PKCS#12 files" }))
+            )
+        })?;
+        
+        // Parse and validate PKCS#12
+        let (cert, pkey) = match parse_pkcs12_certificate(&certificate_data, &password) {
+            Ok(result) => result,
+            Err(e) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": format!("Invalid PKCS#12 file or password: {}", e) }))
+                ));
+            }
+        };
+        
+        // Extract certificate info
+        let (issuer, subject, serial, valid_from, valid_to) = match extract_certificate_info(&cert) {
+            Ok(info) => info,
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("Failed to extract certificate info: {}", e) }))
+                ));
+            }
+        };
+        
+        // Encrypt password
+        let encrypted_password = match encrypt_password(&password) {
+            Ok(hash) => hash,
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("Failed to encrypt password: {}", e) }))
+                ));
+            }
+        };
+        
+        // Convert private key to PEM
+        let private_key_pem = match pkey.private_key_to_pem_pkcs8() {
+            Ok(pem) => pem,
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("Failed to encode private key: {}", e) }))
+                ));
+            }
+        };
+        
+        (Some(issuer), Some(subject), Some(serial), Some(valid_from), Some(valid_to), Some(encrypted_password), Some(private_key_pem))
+    } else {
+        // For other certificate types, store as-is
+        (None, None, None, None, None, None, None)
+    };
+
     let query = r#"
         INSERT INTO certificates 
-        (user_id, account_id, name, certificate_data, certificate_type, status, fingerprint)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        (user_id, account_id, name, certificate_data, certificate_type, issuer, subject, 
+         serial_number, valid_from, valid_to, status, fingerprint, key_password_encrypted, private_key)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING id, user_id, account_id, name, certificate_type, issuer, subject, 
                   serial_number, valid_from, valid_to, status, fingerprint, created_at, updated_at
     "#;
@@ -826,8 +899,15 @@ pub async fn upload_certificate(
         .bind(&file_name)
         .bind(&certificate_data)
         .bind(&certificate_type)
+        .bind(&issuer)
+        .bind(&subject)
+        .bind(&serial_number)
+        .bind(&valid_from)
+        .bind(&valid_to)
         .bind(CertificateStatus::Active.to_string())
         .bind(&fingerprint)
+        .bind(&encrypted_password)
+        .bind(&private_key_pem)
         .fetch_one(pool)
         .await
         .map_err(|e| {
@@ -852,7 +932,7 @@ pub async fn upload_certificate(
         valid_to: row.get("valid_to"),
         status: row.get::<String, _>("status").parse().unwrap_or(CertificateStatus::Active),
         fingerprint: row.get("fingerprint"),
-        key_password_encrypted: None,
+        key_password_encrypted: encrypted_password,
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     };
@@ -1261,6 +1341,299 @@ pub async fn verify_pdf_signature(
     }))
 }
 
+/// Sign PDF with uploaded certificate
+pub async fn sign_pdf_with_certificate(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+    mut multipart: Multipart,
+) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, Json<serde_json::Value>)> {
+    let state_lock = state.lock().await;
+    let pool = &state_lock.db_pool;
+    
+    // Get user info
+    let db_user = UserQueries::get_user_by_id(pool, user_id).await
+        .map_err(|_| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to fetch user" }))
+        ))?
+        .ok_or_else(|| (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "User not found" }))
+        ))?;
+    
+    let mut pdf_data: Option<Vec<u8>> = None;
+    let mut certificate_id: Option<i64> = None;
+    let mut password: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut location: Option<String> = None;
+
+    // Parse multipart form
+    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+        let name = field.name().unwrap_or("").to_string();
+        
+        match name.as_str() {
+            "pdf" => {
+                pdf_data = Some(field.bytes().await.unwrap_or_default().to_vec());
+            },
+            "certificate_id" => {
+                certificate_id = String::from_utf8_lossy(&field.bytes().await.unwrap_or_default())
+                    .parse::<i64>().ok();
+            },
+            "password" => {
+                password = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
+            },
+            "reason" => {
+                reason = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
+            },
+            "location" => {
+                location = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
+            },
+            _ => {}
+        }
+    }
+    
+    let pdf_bytes = pdf_data.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "No PDF file provided" }))
+        )
+    })?;
+    
+    let certificate_id = certificate_id.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Certificate ID is required" }))
+        )
+    })?;
+    
+    // Fetch certificate from database
+    let cert_row: (Vec<u8>, Option<String>, Option<Vec<u8>>, Option<String>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>) = sqlx::query_as(
+        r#"
+        SELECT certificate_data, key_password_encrypted, private_key, issuer, subject, valid_from, valid_to
+        FROM certificates
+        WHERE id = $1 AND (user_id = $2 OR account_id = $3) AND certificate_type IN ('p12', 'pfx')
+        "#
+    )
+    .bind(certificate_id)
+    .bind(db_user.id)
+    .bind(db_user.account_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to fetch certificate" }))
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Certificate not found or not a PKCS#12 certificate" }))
+        )
+    })?;
+    
+    let (cert_data, encrypted_password, private_key_pem, issuer, subject, valid_from, valid_to) = cert_row;
+    
+    // Check if certificate is expired
+    if let Some(valid_to) = valid_to {
+        if valid_to < chrono::Utc::now() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Certificate has expired" }))
+            ));
+        }
+    }
+    
+    // Verify password
+    let encrypted_password = encrypted_password.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Certificate password not found" }))
+        )
+    })?;
+    
+    let provided_password = password.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Password is required" }))
+        )
+    })?;
+    
+    if !verify_password(&provided_password, &encrypted_password)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Password verification failed: {}", e) }))
+            )
+        })? {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid password" }))
+        ));
+    }
+    
+    // Parse certificate and private key
+    let (cert, pkey) = match parse_pkcs12_certificate(&cert_data, &provided_password) {
+        Ok(result) => result,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to parse certificate: {}", e) }))
+            ));
+        }
+    };
+    
+    // Sign PDF
+    let signed_pdf = sign_pdf_with_uploaded_certificate(
+        &pdf_bytes,
+        &cert,
+        &pkey,
+        reason.as_deref().unwrap_or("Signed with uploaded certificate"),
+        location.as_deref().unwrap_or("Letmesign Platform"),
+    ).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to sign PDF: {}", e) }))
+        )
+    })?;
+    
+    // Convert to base64 for response
+    let pdf_base64 = base64::encode(&signed_pdf);
+    
+    Ok(Json(ApiResponse {
+        success: true,
+        status_code: 200,
+        message: "PDF signed successfully with uploaded certificate".to_string(),
+        data: Some(json!({
+            "pdf_base64": pdf_base64,
+            "certificate_info": {
+                "issuer": issuer,
+                "subject": subject,
+                "valid_from": valid_from,
+                "valid_to": valid_to
+            },
+            "signed_at": chrono::Utc::now().to_rfc3339(),
+            "signature_type": "PKCS#7 with uploaded certificate"
+        })),
+        error: None,
+    }))
+}
+
+/// Helper function to sign PDF with uploaded certificate
+fn sign_pdf_with_uploaded_certificate(
+    pdf_bytes: &[u8],
+    cert: &openssl::x509::X509,
+    pkey: &openssl::pkey::PKey<openssl::pkey::Private>,
+    reason: &str,
+    location: &str,
+) -> Result<Vec<u8>, String> {
+    use lopdf::{Object, Dictionary};
+    
+    // Load PDF
+    let mut doc = Document::load_mem(pdf_bytes)
+        .map_err(|e| format!("Failed to load PDF: {}", e))?;
+    
+    // Reserve space for signature (estimate 8KB for PKCS#7)
+    let signature_size = 8192;
+    let byte_range = calculate_byte_range(pdf_bytes.len(), signature_size);
+    
+    // Create signature dictionary
+    let mut sig_dict = Dictionary::new();
+    sig_dict.set("Type", Object::Name(b"Sig".to_vec()));
+    sig_dict.set("Filter", Object::Name(b"Adobe.PPKLite".to_vec()));
+    sig_dict.set("SubFilter", Object::Name(b"adbe.pkcs7.detached".to_vec()));
+    
+    // Add metadata
+    let now = chrono::Utc::now();
+    let date_str = format!("D:{}", now.format("%Y%m%d%H%M%S+00'00'"));
+    sig_dict.set("M", Object::String(date_str.into_bytes(), lopdf::StringFormat::Literal));
+    
+    // Extract signer name from certificate
+    let signer_name = cert.subject_name().entries()
+        .find(|e| e.object().nid() == openssl::nid::Nid::COMMONNAME)
+        .and_then(|e| e.data().as_utf8().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Unknown".to_string());
+    
+    sig_dict.set("Name", Object::String(signer_name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+    sig_dict.set("Reason", Object::String(reason.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+    sig_dict.set("Location", Object::String(location.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+    
+    // Set ByteRange
+    sig_dict.set("ByteRange", Object::Array(vec![
+        Object::Integer(byte_range[0] as i64),
+        Object::Integer(byte_range[1] as i64),
+        Object::Integer(byte_range[2] as i64),
+        Object::Integer(byte_range[3] as i64),
+    ]));
+    
+    // Create PKCS#7 signature
+    let pkcs7_signature = create_pkcs7_signature_with_cert(
+        pdf_bytes,
+        &byte_range,
+        cert,
+        pkey,
+        None, // No additional cert chain for uploaded certs
+    ).map_err(|e| format!("Failed to create PKCS#7 signature: {}", e))?;
+    
+    sig_dict.set("Contents", Object::String(pkcs7_signature, lopdf::StringFormat::Hexadecimal));
+    
+    // Add signature object
+    let sig_obj_id = doc.add_object(sig_dict);
+    
+    // Create signature field
+    let mut sig_field = Dictionary::new();
+    sig_field.set("FT", Object::Name(b"Sig".to_vec()));
+    sig_field.set("T", Object::String(b"CertificateSignature".to_vec(), lopdf::StringFormat::Literal));
+    sig_field.set("V", Object::Reference(sig_obj_id));
+    sig_field.set("Rect", Object::Array(vec![
+        Object::Integer(0),
+        Object::Integer(0),
+        Object::Integer(0),
+        Object::Integer(0),
+    ]));
+    
+    let sig_field_id = doc.add_object(sig_field);
+    
+    // Add to or create AcroForm
+    let acroform_ref_copy = {
+        let catalog = doc.catalog_mut()
+            .map_err(|e| format!("Failed to get catalog: {}", e))?;
+        catalog.get(b"AcroForm").ok().and_then(|r| r.as_reference().ok())
+    };
+    
+    if let Some(acroform_id) = acroform_ref_copy {
+        // Add to existing AcroForm
+        if let Ok(acroform_obj) = doc.get_object_mut(acroform_id) {
+            if let Ok(acroform_dict) = acroform_obj.as_dict_mut() {
+                if let Ok(fields) = acroform_dict.get_mut(b"Fields") {
+                    if let Ok(fields_array) = fields.as_array_mut() {
+                        fields_array.push(Object::Reference(sig_field_id));
+                    }
+                } else {
+                    acroform_dict.set("Fields", Object::Array(vec![Object::Reference(sig_field_id)]));
+                }
+            }
+        }
+    } else {
+        // Create new AcroForm
+        let mut acroform = Dictionary::new();
+        acroform.set("Fields", Object::Array(vec![Object::Reference(sig_field_id)]));
+        let acroform_id = doc.add_object(acroform);
+        let catalog = doc.catalog_mut()
+            .map_err(|e| format!("Failed to get catalog: {}", e))?;
+        catalog.set("AcroForm", Object::Reference(acroform_id));
+    }
+    
+    // Save
+    let mut output = Vec::new();
+    doc.save_to(&mut output)
+        .map_err(|e| format!("Failed to save PDF: {}", e))?;
+    
+    Ok(output)
+}
+
 /// Sign a visual PDF with digital signature structure
 /// This adds REAL cryptographic signature with certificate chain
 pub async fn sign_visual_pdf(
@@ -1271,6 +1644,7 @@ pub async fn sign_visual_pdf(
     let state_lock = state.lock().await;
     let pool = &state_lock.db_pool;
     
+    // Get user info
     let db_user = UserQueries::get_user_by_id(pool, user_id).await
         .map_err(|_| (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1488,4 +1862,5 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/pdf-signature/settings", put(update_pdf_signature_settings))
         .route("/pdf-signature/verify", post(verify_pdf_signature))
         .route("/pdf-signature/sign-visual-pdf", post(sign_visual_pdf))
+        .route("/pdf-signature/sign-with-certificate", post(sign_pdf_with_certificate))
 }

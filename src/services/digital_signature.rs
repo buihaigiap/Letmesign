@@ -7,8 +7,11 @@ use openssl::pkey::{PKey, Private};
 use openssl::rsa::Rsa;
 use openssl::x509::extension::{BasicConstraints, KeyUsage, SubjectKeyIdentifier};
 use openssl::x509::{X509Builder, X509NameBuilder, X509};
+use openssl::pkcs12::Pkcs12;
 use sqlx::PgPool;
 use std::collections::HashMap;
+use bcrypt::{hash, verify, DEFAULT_COST};
+use chrono::{DateTime, Utc, TimeZone};
 
 /// Certificate Authority configuration
 pub struct CAConfig {
@@ -430,4 +433,175 @@ pub async fn initialize_ca_infrastructure(pool: &PgPool) -> Result<()> {
     println!("✅ CA infrastructure initialized successfully");
     
     Ok(())
+}
+
+/// Parse and validate PKCS#12 (.p12/.pfx) certificate
+pub fn parse_pkcs12_certificate(
+    pkcs12_data: &[u8],
+    password: &str,
+) -> Result<(X509, PKey<Private>)> {
+    // Parse PKCS#12 structure
+    let pkcs12 = Pkcs12::from_der(pkcs12_data)
+        .context("Invalid PKCS#12 format")?;
+    
+    // Parse with password
+    let parsed = pkcs12.parse2(password)
+        .context("Invalid password or corrupted PKCS#12 file")?;
+    
+    // Extract certificate and private key
+    let cert = parsed.cert
+        .context("No certificate found in PKCS#12")?;
+    
+    let pkey = parsed.pkey
+        .context("No private key found in PKCS#12")?;
+    
+    // Basic validation - check if certificate is not expired
+    let now = Asn1Time::days_from_now(0)?;
+    if cert.not_after() < now {
+        return Err(anyhow::anyhow!("Certificate has expired"));
+    }
+    
+    if cert.not_before() > now {
+        return Err(anyhow::anyhow!("Certificate is not yet valid"));
+    }
+    
+    Ok((cert, pkey))
+}
+
+/// Encrypt password using bcrypt
+pub fn encrypt_password(password: &str) -> Result<String> {
+    hash(password, DEFAULT_COST)
+        .context("Failed to hash password")
+}
+
+/// Verify password against encrypted hash
+pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
+    verify(password, hash)
+        .context("Failed to verify password")
+}
+
+/// Parse ASN.1 time string to chrono DateTime
+fn parse_asn1_time_to_chrono(time_str: &str) -> DateTime<Utc> {
+    // ASN.1 time format is like "231031120000Z" (YYMMDDHHMMSSZ)
+    // or "20231031120000Z" (YYYYMMDDHHMMSSZ)
+    if time_str.len() >= 13 && time_str.ends_with('Z') {
+        let time_part = &time_str[..time_str.len() - 1]; // Remove 'Z'
+
+        if time_part.len() == 12 {
+            // YYMMDDHHMMSS format
+            if let (Ok(year), Ok(month), Ok(day), Ok(hour), Ok(min), Ok(sec)) = (
+                time_part[0..2].parse::<i32>(),
+                time_part[2..4].parse::<u32>(),
+                time_part[4..6].parse::<u32>(),
+                time_part[6..8].parse::<u32>(),
+                time_part[8..10].parse::<u32>(),
+                time_part[10..12].parse::<u32>(),
+            ) {
+                let year = if year < 50 { 2000 + year } else { 1900 + year }; // Y2K handling
+                if let Some(dt) = Utc.with_ymd_and_hms(year, month, day, hour, min, sec).single() {
+                    return dt;
+                }
+            }
+        } else if time_part.len() == 14 {
+            // YYYYMMDDHHMMSS format
+            if let (Ok(year), Ok(month), Ok(day), Ok(hour), Ok(min), Ok(sec)) = (
+                time_part[0..4].parse::<i32>(),
+                time_part[4..6].parse::<u32>(),
+                time_part[6..8].parse::<u32>(),
+                time_part[8..10].parse::<u32>(),
+                time_part[10..12].parse::<u32>(),
+                time_part[12..14].parse::<u32>(),
+            ) {
+                if let Some(dt) = Utc.with_ymd_and_hms(year, month, day, hour, min, sec).single() {
+                    return dt;
+                }
+            }
+        }
+    }
+
+    // Fallback to current time if parsing fails
+    Utc::now()
+}
+
+/// Extract certificate information for storage
+pub fn extract_certificate_info(cert: &X509) -> Result<(String, String, String, DateTime<Utc>, DateTime<Utc>)> {
+    // Build issuer string manually from entries
+    let issuer = cert.issuer_name().entries()
+        .map(|entry| {
+            let key = entry.object().nid().short_name().unwrap_or("Unknown");
+            let value = entry.data().as_utf8()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|_| "Unknown".to_string());
+            format!("{}={}", key, value)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    // Build subject string manually from entries
+    let subject = cert.subject_name().entries()
+        .map(|entry| {
+            let key = entry.object().nid().short_name().unwrap_or("Unknown");
+            let value = entry.data().as_utf8()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|_| "Unknown".to_string());
+            format!("{}={}", key, value)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    // Convert serial number to hex string
+    let serial_bytes = cert.serial_number().to_bn()
+        .unwrap_or_else(|_| BigNum::from_u32(0).unwrap());
+    let serial = serial_bytes.to_vec().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+
+    // Convert OpenSSL time to chrono using string parsing
+    let not_before = cert.not_before();
+    let not_after = cert.not_after();
+
+    // Parse the ASN.1 time strings
+    let valid_from = parse_asn1_time_to_chrono(&not_before.to_string());
+    let valid_to = parse_asn1_time_to_chrono(&not_after.to_string());
+
+    Ok((issuer, subject, serial, valid_from, valid_to))
+}
+
+/// Create PKCS#7 signature for PDF using uploaded certificate
+pub fn create_pkcs7_signature_with_cert(
+    pdf_data: &[u8],
+    byte_range: &[u32; 4],
+    signing_cert: &X509,
+    signing_keypair: &PKey<Private>,
+    cert_chain: Option<&[X509]>,
+) -> Result<Vec<u8>> {
+    use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
+    use openssl::stack::Stack;
+    
+    // Extract content to sign (exclude signature placeholder)
+    let [offset1, len1, offset2, len2] = *byte_range;
+    let mut content_to_sign = Vec::new();
+    content_to_sign.extend_from_slice(&pdf_data[offset1 as usize..(offset1 + len1) as usize]);
+    content_to_sign.extend_from_slice(&pdf_data[offset2 as usize..(offset2 + len2) as usize]);
+    
+    // Create certificate chain stack
+    let mut cert_stack = Stack::new()?;
+    if let Some(chain) = cert_chain {
+        for cert in chain {
+            cert_stack.push(cert.clone())?;
+        }
+    }
+    
+    // Create PKCS#7 signature
+    let flags = Pkcs7Flags::DETACHED | Pkcs7Flags::BINARY;
+    let pkcs7 = Pkcs7::sign(
+        signing_cert,
+        signing_keypair,
+        &cert_stack,
+        &content_to_sign,
+        flags,
+    )?;
+    
+    // Convert to DER format
+    let pkcs7_der = pkcs7.to_der()?;
+    
+    Ok(pkcs7_der)
 }
