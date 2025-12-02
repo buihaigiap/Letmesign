@@ -16,13 +16,19 @@ import {
   MenuItem,
   IconButton,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField
 } from '@mui/material';
 import { 
   CloudUpload, 
   Add, 
   Delete,
-  VerifiedUser 
+  VerifiedUser,
+  Lock
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
@@ -61,6 +67,10 @@ const PDFSignaturePage = () => {
     fileName?: string;
   } | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [certificateName, setCertificateName] = useState('');
+  const [certificatePassword, setCertificatePassword] = useState('');
 
   // Load certificates and settings on mount
   useEffect(() => {
@@ -68,7 +78,7 @@ const PDFSignaturePage = () => {
       try {
         const token = localStorage.getItem('token');
         // Load certificates
-        const certsResponse = await fetch('/api/pdf-signature/certificates', {
+        const certsResponse = await fetch('/api/certificates', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -167,6 +177,148 @@ const PDFSignaturePage = () => {
       setVerifyLoading(false);
     }
   };
+
+  const handleOpenUploadDialog = (file: File) => {
+    setSelectedFile(file);
+    setCertificateName(file.name.replace(/\.(p12|pfx)$/i, ''));
+    setCertificatePassword('');
+    setUploadDialogOpen(true);
+  };
+
+  const handleCloseUploadDialog = () => {
+    setUploadDialogOpen(false);
+    setSelectedFile(null);
+    setCertificateName('');
+    setCertificatePassword('');
+  };
+
+  const handleUploadCertificate = async () => {
+    if (!selectedFile || !certificateName || !certificatePassword) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    setUploadLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('certificate', selectedFile);
+      formData.append('name', certificateName);
+      formData.append('password', certificatePassword);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/certificates/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Upload failed';
+        try {
+          const errorData = JSON.parse(text);
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          errorMsg = text || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      if (result.data) {
+        setCertificates(prev => [...prev, result.data]);
+        toast.success(result.message || 'Certificate uploaded successfully');
+        handleCloseUploadDialog();
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast.error(error.message || 'Failed to upload certificate');
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const handleDeleteCertificate = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this certificate?')) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/certificates/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Delete failed';
+        try {
+          const errorData = JSON.parse(text);
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          errorMsg = text || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
+
+      setCertificates(prev => prev.filter(cert => cert.id !== id));
+      toast.success('Certificate deleted');
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast.error(error.message || 'Failed to delete certificate');
+    }
+  };
+
+  const handleSettingsChange = async (key: keyof PDFSignatureSettings, value: any) => {
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/pdf-signature/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newSettings)
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to save settings';
+        try {
+          const errorData = JSON.parse(text);
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          errorMsg = text || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      toast.success(result.message || 'Settings saved');
+    } catch (error: any) {
+      console.error('Settings error:', error);
+      toast.error(error.message || 'Failed to save settings');
+    }
+  };
+
+  // Dropzone for certificate upload
+  const { getRootProps: getCertRootProps, getInputProps: getCertInputProps, isDragActive: isCertDragActive } = useDropzone({
+    accept: {
+      'application/x-pkcs12': ['.p12', '.pfx']
+    },
+    maxFiles: 1,
+    onDrop: (acceptedFiles) => {
+      if (acceptedFiles.length > 0) {
+        handleOpenUploadDialog(acceptedFiles[0]);
+      }
+    }
+  });
 
 //   const handleUploadCertificate = async (files: File[]) => {
 //     if (files.length === 0) return;
@@ -461,7 +613,7 @@ const PDFSignaturePage = () => {
       </Paper>
 
       {/* Signing Certificates Section */}
-      {/* <Paper sx={{ 
+      <Paper sx={{ 
         p: 3, 
         mb: 4,
         bgcolor: 'rgba(13, 7, 31, 0.5)', 
@@ -472,41 +624,42 @@ const PDFSignaturePage = () => {
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             Signing Certificates
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={uploadLoading ? <CircularProgress size={20} /> : <Add />}
-            component="label"
-            disabled={uploadLoading}
+          <Box
+            {...getCertRootProps()}
+            sx={{ display: 'inline-block' }}
           >
-            UPLOAD CERT
-            <input
-              type="file"
-              hidden
-              accept=".p12,.pfx,.pem,.crt"
-              onChange={(e) => e.target.files && handleUploadCertificate(Array.from(e.target.files))}
-            />
-          </Button>
+            <input {...getCertInputProps()} />
+            <Button
+              variant="contained"
+              startIcon={uploadLoading ? <CircularProgress size={20} /> : <Add />}
+              disabled={uploadLoading}
+              sx={{
+                bgcolor: 'primary.main',
+                '&:hover': {
+                  bgcolor: 'primary.dark'
+                }
+              }}
+            >
+              UPLOAD CERTIFICATE
+            </Button>
+          </Box>
         </Box>
 
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Unlock with Letmesign Pro
-            </Typography>
-            <Typography variant="body2">
-              Use your own certificates to sign and verify PDF files.
-            </Typography>
-            <Button 
-              variant="text" 
-              size="small" 
-              sx={{ mt: 1, p: 0, textTransform: 'none' }}
-            >
-              Learn More
-            </Button>
-          </Alert>        <TableContainer>
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            Upload Your Signing Certificate
+          </Typography>
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            Upload .p12 or .pfx certificate files to sign PDF documents with your digital signature.
+          </Typography>
+        </Alert>
+
+        <TableContainer>
           <Table>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>NAME</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>ISSUER</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>VALID TO</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>STATUS</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }} align="right">ACTIONS</TableCell>
@@ -515,16 +668,38 @@ const PDFSignaturePage = () => {
             <TableBody>
               {certificates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    No certificates uploaded yet
+                  <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    <Lock sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+                    <Typography variant="body2">
+                      No certificates uploaded yet
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                      Click "UPLOAD CERTIFICATE" to add your signing certificate
+                    </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
                 certificates.map((cert) => (
-                  <TableRow key={cert.id}>
-                    <TableCell>{cert.name}</TableCell>
+                  <TableRow key={cert.id} sx={{ '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.02)' } }}>
                     <TableCell>
-                      {cert.valid_to ? new Date(cert.valid_to).toLocaleDateString() : 'N/A'}
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {cert.name}
+                      </Typography>
+                      {cert.subject && (
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5 }}>
+                          {cert.subject}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                        {cert.issuer || 'N/A'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {cert.valid_to ? new Date(cert.valid_to).toLocaleDateString('vi-VN') : 'N/A'}
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       <Box
@@ -549,6 +724,11 @@ const PDFSignaturePage = () => {
                         size="small" 
                         color="error"
                         onClick={() => handleDeleteCertificate(cert.id)}
+                        sx={{ 
+                          '&:hover': { 
+                            bgcolor: 'rgba(211, 47, 47, 0.1)' 
+                          } 
+                        }}
                       >
                         <Delete />
                       </IconButton>
@@ -559,10 +739,74 @@ const PDFSignaturePage = () => {
             </TableBody>
           </Table>
         </TableContainer>
-      </Paper> */}
+      </Paper>
+
+      {/* Upload Certificate Dialog */}
+      <Dialog 
+        open={uploadDialogOpen} 
+        onClose={handleCloseUploadDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(13, 7, 31, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }
+        }}
+      >
+        <DialogTitle>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Upload Certificate
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Certificate Name"
+              value={certificateName}
+              onChange={(e) => setCertificateName(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Certificate Password"
+              type="password"
+              value={certificatePassword}
+              onChange={(e) => setCertificatePassword(e.target.value)}
+              helperText="Enter the password to unlock this certificate"
+              required
+            />
+            {selectedFile && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="caption">
+                  <strong>File:</strong> {selectedFile.name}
+                </Typography>
+              </Alert>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button 
+            onClick={handleCloseUploadDialog}
+            disabled={uploadLoading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleUploadCertificate}
+            variant="contained"
+            disabled={uploadLoading || !certificateName || !certificatePassword}
+            startIcon={uploadLoading ? <CircularProgress size={20} /> : undefined}
+          >
+            {uploadLoading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Preferences Section */}
-      {/* <Paper sx={{ 
+      <Paper sx={{ 
         p: 3,
         bgcolor: 'rgba(13, 7, 31, 0.5)', 
         borderRadius: 2,
@@ -606,7 +850,7 @@ const PDFSignaturePage = () => {
             </Select>
           </FormControl>
         </Box>
-      </Paper> */}
+      </Paper>
     </Box>
   );
 };

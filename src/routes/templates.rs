@@ -2096,6 +2096,57 @@ pub async fn download_file_public(
         Ok(data) => data,
         Err(_) => {
             println!("File not found in storage: {}", key);
+            
+            // Check if this is a preview request that needs to be generated
+            // Pattern: templates/previews/FILENAME_page_N.jpg
+            if key.contains("/previews/") && key.contains("_page_") {
+                // Extract page number and original PDF path
+                if let Some(page_start) = key.rfind("_page_") {
+                    let after_page = &key[page_start + 6..];
+                    if let Some(dot_pos) = after_page.find('.') {
+                        if let Ok(page_number) = after_page[..dot_pos].parse::<i32>() {
+                            // Extract format
+                            let format = &after_page[dot_pos + 1..];
+                            
+                            // Reconstruct original PDF path
+                            // From: templates/previews/FILENAME_page_2.jpg
+                            // To: templates/FILENAME.pdf
+                            let base_key = &key[..page_start];
+                            let pdf_key = base_key.replace("/previews/", "/") + ".pdf";
+                            
+                            println!("Generating preview on-demand: {} from {}", key, pdf_key);
+                            
+                            // Download original PDF
+                            if let Ok(pdf_data) = storage.download_file(&pdf_key).await {
+                                // Render the requested page
+                                if let Ok(image_data) = render_pdf_page_to_image(&pdf_data, page_number, format) {
+                                    // Save to storage for future requests
+                                    let content_type = if format == "png" { "image/png" } else { "image/jpeg" };
+                                    let _ = storage.upload_file_with_key(image_data.clone(), &key, content_type).await;
+                                    
+                                    // Return the generated image
+                                    let response = Response::builder()
+                                        .status(StatusCode::OK)
+                                        .header(header::CONTENT_TYPE, content_type)
+                                        .header(header::CONTENT_DISPOSITION, format!("inline; filename=\"page_{}.{}\"", page_number, format))
+                                        .header("Access-Control-Allow-Origin", "*")
+                                        .header("Access-Control-Expose-Headers", "*")
+                                        .header("Content-Length", image_data.len().to_string())
+                                        .header("Cache-Control", "public, max-age=86400")
+                                        .body(Body::from(image_data))
+                                        .unwrap();
+                                    return response;
+                                } else {
+                                    println!("Failed to render PDF page {} from {}", page_number, pdf_key);
+                                }
+                            } else {
+                                println!("Original PDF not found: {}", pdf_key);
+                            }
+                        }
+                    }
+                }
+            }
+            
             // Return 404 Not Found response
             let response = Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -2450,76 +2501,60 @@ fn render_pdf_page_to_image(
     page_number: i32,
     format: &str,
 ) -> Result<Vec<u8>, String> {
-    use pdfium_render::prelude::*;
-    use image::{ImageBuffer, Rgba, RgbaImage};
+    use image::{ImageFormat};
+    use std::process::Command;
+    use std::io::Write;
 
-    // Initialize PDFium - bind to library in lib folder or system
-    let pdfium = Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./lib/"))
-            .or_else(|_| Pdfium::bind_to_system_library())
-            .map_err(|e| format!("Failed to load PDFium library: {:?}", e))?,
-    );
+    // Use pdftoppm command line tool instead of pdfium for better compatibility
+    let mut child = Command::new("pdftoppm")
+        .arg("-png")           // Output PNG format
+        .arg("-f").arg(page_number.to_string())  // First page to convert
+        .arg("-l").arg(page_number.to_string())  // Last page to convert  
+        .arg("-scale-to").arg("800")  // Scale to width 800px
+        .arg("-singlefile")    // Don't add page number suffix
+        .arg("-")              // Read from stdin
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn pdftoppm: {}", e))?;
 
-    // Load PDF document
-    let document = pdfium.load_pdf_from_byte_slice(pdf_bytes, None).map_err(|e| e.to_string())?;
-
-    // Get the page (page_number is 1-indexed)
-    let page_index = (page_number - 1) as u16;
-    if page_index >= document.pages().len() as u16 {
-        return Err(format!("Page {} not found in PDF", page_number));
+    // Write PDF data to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(pdf_bytes).map_err(|e| format!("Failed to write to pdftoppm: {}", e))?;
     }
 
-    let page = document.pages().get(page_index).map_err(|e| e.to_string())?;
+    // Read output
+    let result = child.wait_with_output()
+        .map_err(|e| format!("Failed to wait for pdftoppm: {}", e))?;
 
-    // Render page to bitmap with high DPI for better quality
-    let bitmap = page.render_with_config(
-        &PdfRenderConfig::new()
-            .set_target_width(800)
-            .set_maximum_height(1100)
-            .rotate_if_landscape(PdfPageRenderRotation::None, true),
-    ).map_err(|e| e.to_string())?;
-
-    // Convert bitmap to RGBA image
-    let width = bitmap.width() as u32;
-    let height = bitmap.height() as u32;
-    let mut img: RgbaImage = ImageBuffer::new(width, height);
-
-    // Copy pixel data from bitmap to image buffer
-    let bitmap_bytes = bitmap.as_raw_bytes();
-    let row_stride = (bitmap.width() * 4) as usize; // 4 bytes per pixel (RGBA)
-
-    for y in 0..height {
-        for x in 0..width {
-            let pixel_index = (y as usize * row_stride) + (x as usize * 4); // 4 bytes per pixel (RGBA)
-            if pixel_index + 3 < bitmap_bytes.len() {
-                let r = bitmap_bytes[pixel_index];
-                let g = bitmap_bytes[pixel_index + 1];
-                let b = bitmap_bytes[pixel_index + 2];
-                let a = bitmap_bytes[pixel_index + 3];
-
-                img.put_pixel(x, y, Rgba([r, g, b, a]));
-            }
-        }
+    if !result.status.success() {
+        return Err(format!("pdftoppm failed: {}", String::from_utf8_lossy(&result.stderr)));
     }
 
-    // Encode image to bytes
-    let mut buffer = Vec::new();
+    // Convert PNG to requested format if needed
+    if format == "png" {
+        return Ok(result.stdout);
+    }
+
+    // Load PNG and convert to JPG
+    let img = image::load_from_memory_with_format(&result.stdout, ImageFormat::Png)
+        .map_err(|e| format!("Failed to load PNG: {}", e))?;
+
+    let mut output_bytes = Vec::new();
+    
     match format {
-        "png" => {
-            img.write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Png).map_err(|e| e.to_string())?;
-        }
-        "jpeg" | "jpg" => {
-            // Convert RGBA to RGB for JPEG
-            let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
-            rgb_img.write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
+        "jpg" | "jpeg" => {
+            let rgb_img = img.to_rgb8();
+            rgb_img.write_to(&mut std::io::Cursor::new(&mut output_bytes), ImageFormat::Jpeg)
+                .map_err(|e| format!("Failed to encode JPEG: {}", e))?;
         }
         _ => {
-            // Default to PNG
-            img.write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Png).map_err(|e| e.to_string())?;
+            return Err(format!("Unsupported format: {}", format));
         }
     }
 
-    Ok(buffer)
+    Ok(output_bytes)
 }
 
 /// Get PDF metadata (page count, dimensions, etc.)
