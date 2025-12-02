@@ -2147,12 +2147,15 @@ pub async fn download_file_public(
                 }
             }
             
-            // Return 404 Not Found response
+            // Return 404 Not Found response - NO CACHE for errors
             let response = Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header(header::CONTENT_TYPE, "text/plain")
                 .header("Access-Control-Allow-Origin", "*")
                 .header("Access-Control-Expose-Headers", "*")
+                .header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
                 .body(Body::from("File not found"))
                 .unwrap();
             return response;
@@ -2446,6 +2449,8 @@ pub async fn preview_file(
                 .status(StatusCode::NOT_FOUND)
                 .header(header::CONTENT_TYPE, "text/plain")
                 .header("Access-Control-Allow-Origin", "*")
+                .header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+                .header("Pragma", "no-cache")
                 .body(Body::from("PDF file not found"))
                 .unwrap();
             return response;
@@ -2461,6 +2466,8 @@ pub async fn preview_file(
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header(header::CONTENT_TYPE, "text/plain")
                 .header("Access-Control-Allow-Origin", "*")
+                .header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+                .header("Pragma", "no-cache")
                 .body(Body::from(format!("Failed to render PDF page: {}", e)))
                 .unwrap();
             return response;
