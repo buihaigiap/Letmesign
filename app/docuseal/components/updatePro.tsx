@@ -7,7 +7,7 @@ const UpdatePro = () => {
                     <OctagonAlert />
                 </div>
                 <div>
-                    <h3>Unlock with DocuSeal Pro</h3>
+                    <h3>Unlock with Letmesign Pro</h3>
                     <p>Display your company name and logo when signing documents.</p>
                     <a href="/pricing" className="underline">Learn More</a>
                 </div>

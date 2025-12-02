@@ -187,10 +187,6 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
           <Box key={template.id}>
             <motion.div
               variants={itemVariants}
-              whileHover={{
-                y: -12,
-                transition: { type: "spring", stiffness: 300, damping: 20 }
-              }}
             >
               <Card
                 component={Link}
@@ -203,10 +199,6 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
                   borderRadius: 4,
                   overflow: 'hidden',
                   position: 'relative',
-                  '&:hover': {
-                    transform: 'translateY(-4px)',
-                    boxShadow: '0 20px 40px rgba(79, 70, 229, 0.3)',
-                  },
                   transition: 'all 0.3s ease',
                 }}
                 onMouseEnter={() => setHoveredCard(template.id)}
@@ -327,12 +319,12 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
 
       <Dialog
         open={showMoveModal} 
-        onClose={() => (
-          setShowMoveModal(false)
-          setNewFolderName('')
-          setSelectedFolderId(null)
-          setSelectedValue(null
-        )} 
+        onClose={() => {
+          setShowMoveModal(false);
+          setNewFolderName('');
+          setSelectedFolderId(null);
+          setSelectedValue(null);
+        }} 
         maxWidth="sm" fullWidth
        >
         <DialogTitle>Move Template</DialogTitle>

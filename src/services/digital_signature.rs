@@ -21,10 +21,10 @@ pub struct CAConfig {
 impl Default for CAConfig {
     fn default() -> Self {
         Self {
-            organization: "Letmesign".to_string(),
-            country: "VN".to_string(),
-            state: "Ho Chi Minh City".to_string(),
-            locality: "District 1".to_string(),
+            organization: "Letmesign LLC".to_string(),
+            country: "US".to_string(),
+            state: "California".to_string(),
+            locality: "San Francisco".to_string(),
         }
     }
 }
@@ -179,7 +179,7 @@ pub fn generate_signing_certificate(
     name_builder.append_entry_by_nid(Nid::STATEORPROVINCENAME, &config.state)?;
     name_builder.append_entry_by_nid(Nid::LOCALITYNAME, &config.locality)?;
     name_builder.append_entry_by_nid(Nid::ORGANIZATIONNAME, &config.organization)?;
-    name_builder.append_entry_by_nid(Nid::COMMONNAME, email)?; // Use email as CN for display
+    name_builder.append_entry_by_nid(Nid::COMMONNAME, "Letmesign")?; // Use Letmesign as CN
     let name = name_builder.build();
     
     builder.set_subject_name(&name)?;

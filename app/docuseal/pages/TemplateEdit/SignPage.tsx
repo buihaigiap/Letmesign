@@ -105,10 +105,10 @@ const SignPage = () => {
 
     try {
       // Generate or retrieve session ID
-      let sessionId = sessionStorage.getItem('docuseal_session_id');
+      let sessionId = sessionStorage.getItem('letmesign_session_id');
       if (!sessionId) {
         sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-        sessionStorage.setItem('docuseal_session_id', sessionId);
+        sessionStorage.setItem('letmesign_session_id', sessionId);
       }
 
       // Get user's timezone

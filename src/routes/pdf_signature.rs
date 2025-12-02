@@ -50,7 +50,7 @@ fn parse_pdf_date(date_str: &str) -> Option<DateTime<Utc>> {
 }
 
 /// Extract email from reason string
-/// Example: "Signed by begabi1224@dwakm.com with DocuSeal.com" -> "begabi1224@dwakm.com"
+/// Example: "Signed by begabi1224@dwakm.com with letmesign.com" -> "begabi1224@dwakm.com"
 fn extract_email_from_reason(reason: &str) -> Option<String> {
     // Look for "Signed by <email>" pattern
     if let Some(start) = reason.find("Signed by ") {
@@ -302,7 +302,7 @@ fn extract_pdf_signatures(pdf_data: &[u8]) -> Result<PDFVerificationResult, Stri
                                                                                         }
                                                                                         
                                                                                         // Extract email from reason if signer_name is not set
-                                                                                        // Format: "Signed by email@domain.com with DocuSeal.com"
+                                                                                        // Format: "Signed by email@domain.com with letmesign.com"
                                                                                         if signer_name.is_none() {
                                                                                             if let Some(email) = extract_email_from_reason(&reason_str) {
                                                                                                 signer_name = Some(email);
@@ -1316,7 +1316,7 @@ pub async fn sign_visual_pdf(
     
     let email = signer_email.unwrap_or_else(|| db_user.email.clone());
     let name = signer_name.unwrap_or_else(|| db_user.email.clone());
-    let sign_reason = reason.unwrap_or_else(|| format!("Signed by {} via DocuSeal", name));
+    let sign_reason = reason.unwrap_or_else(|| format!("Signed by {} via letmesign", name));
     
     // Add REAL cryptographic signature to PDF
     let signed_pdf = add_real_digital_signature_to_pdf(
@@ -1428,7 +1428,7 @@ async fn add_real_digital_signature_to_pdf(
     // Create signature field
     let mut sig_field = Dictionary::new();
     sig_field.set("FT", Object::Name(b"Sig".to_vec()));
-    sig_field.set("T", Object::String(b"DocuSealSignature".to_vec(), lopdf::StringFormat::Literal));
+    sig_field.set("T", Object::String(b"LetmesignSignature".to_vec(), lopdf::StringFormat::Literal));
     sig_field.set("V", Object::Reference(sig_obj_id));
     sig_field.set("Rect", Object::Array(vec![
         Object::Integer(0),

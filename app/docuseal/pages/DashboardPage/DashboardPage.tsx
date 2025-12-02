@@ -21,7 +21,6 @@ const DashboardPage = () => {
   const [folders, setFolders] = useState<any[]>([]);
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
   const [requires2FA, setRequires2FA] = useState(false);
   const navigate = useNavigate();
   const { token, user, refreshUser } = useAuth();
@@ -36,7 +35,6 @@ const DashboardPage = () => {
 
     // Check for redirect after login
     const redirectUrl = localStorage.getItem('redirectAfterLogin');
-    console.log('Dashboard mount - checking redirect:', { redirectUrl, token: !!token });
     if (redirectUrl && token) {
       console.log('Found redirect URL, navigating to:', redirectUrl);
       localStorage.removeItem('redirectAfterLogin');
@@ -86,7 +84,6 @@ const DashboardPage = () => {
       try {
         const settingsResponse = await upstashService.getBasicSettings();
         if (settingsResponse.success) {
-          setGlobalSettings(settingsResponse.data);
           const force2FA = settingsResponse.data.force_2fa_with_authenticator_app;
           const has2FA = user.two_factor_enabled;
           const newRequires2FA = force2FA && !has2FA;
@@ -105,8 +102,6 @@ const DashboardPage = () => {
   }, [user]);
 
   const handle2FASuccess = async () => {
-    console.log('2FA setup success, refreshing user data');
-    console.log('User before refresh:', user?.two_factor_enabled);
 
     // Refresh user data to get updated 2FA status
     await refreshUser();
@@ -117,9 +112,7 @@ const DashboardPage = () => {
     setRequires2FA(false);
 
     // Refresh templates data after 2FA setup
-    console.log('Refreshing templates after 2FA setup');
     await fetchTemplates();
-    console.log('Templates refreshed');
   };  const filteredFolders = folders.filter(folder =>
     folder.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -128,11 +121,9 @@ const DashboardPage = () => {
     template.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   if (requires2FA) {
-    console.log('Showing 2FA setup screen');
     return <TwoFactorSetup onSuccess={handle2FASuccess} />;
   }
 
-  console.log('Showing dashboard content');
 
   return (
     <Box sx={{

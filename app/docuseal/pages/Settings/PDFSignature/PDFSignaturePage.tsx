@@ -352,7 +352,7 @@ const PDFSignaturePage = () => {
                 {/* Signer Information */}
                 {verificationResult.details.common_name && (
                   <Box sx={{ mb: 1.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                    <Typography variant="caption" sx={{display: 'block' }}>
                       Signer:
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -364,7 +364,7 @@ const PDFSignaturePage = () => {
                 {/* Signing Time */}
                 {verificationResult.details.signing_time && (
                   <Box sx={{ mb: 1.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                    <Typography variant="caption" sx={{ display: 'block' }}>
                       Signing Time:
                     </Typography>
                     <Typography variant="body2">
@@ -376,7 +376,7 @@ const PDFSignaturePage = () => {
                 {/* Reason */}
                 {verificationResult.details.reason && (
                   <Box sx={{ mb: 1.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                    <Typography variant="caption" sx={{ display: 'block' }}>
                       Reason:
                     </Typography>
                     <Typography variant="body2">
@@ -488,23 +488,21 @@ const PDFSignaturePage = () => {
           </Button>
         </Box>
 
-        <Alert severity="info" sx={{ mb: 3 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            Unlock with DocuSeal Pro
-          </Typography>
-          <Typography variant="body2">
-            Use your own certificates to sign and verify PDF files.
-          </Typography>
-          <Button 
-            variant="text" 
-            size="small" 
-            sx={{ mt: 1, p: 0, textTransform: 'none' }}
-          >
-            Learn More
-          </Button>
-        </Alert>
-
-        <TableContainer>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Unlock with Letmesign Pro
+            </Typography>
+            <Typography variant="body2">
+              Use your own certificates to sign and verify PDF files.
+            </Typography>
+            <Button 
+              variant="text" 
+              size="small" 
+              sx={{ mt: 1, p: 0, textTransform: 'none' }}
+            >
+              Learn More
+            </Button>
+          </Alert>        <TableContainer>
           <Table>
             <TableHead>
               <TableRow>

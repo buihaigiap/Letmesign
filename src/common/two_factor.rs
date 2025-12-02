@@ -30,7 +30,7 @@ pub fn generate_2fa_secret() -> Result<TwoFactorSetup> {
         30, // 30 second period
         secret_bytes.to_vec(),
         Some("Letmesign".to_string()),
-        "user@docuseal.com".to_string(), // This will be replaced with actual email
+        "user@letmesign.com".to_string(), // This will be replaced with actual email
     ).map_err(|e| anyhow::anyhow!("Failed to create TOTP: {}", e))?;
 
     // Generate QR code URL
@@ -50,7 +50,7 @@ pub fn verify_2fa_code(secret: &str, code: &str) -> Result<bool> {
         30,
         Secret::Encoded(secret.to_string()).to_bytes().map_err(|e| anyhow::anyhow!("Failed to decode secret: {}", e))?,
         Some("Letmesign".to_string()),
-        "user@docuseal.com".to_string(),
+        "user@letmesign.com".to_string(),
     ).map_err(|e| anyhow::anyhow!("Failed to create TOTP: {}", e))?;
 
     // Check current time window and adjacent windows for clock skew tolerance
