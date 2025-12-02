@@ -766,6 +766,8 @@ pub async fn upload_certificate(
     Extension(user_id): Extension<i64>,
     mut multipart: Multipart,
 ) -> Result<Json<ApiResponse<CertificateInfo>>, (StatusCode, Json<serde_json::Value>)> {
+    eprintln!("🔵 upload_certificate called for user_id: {}", user_id);
+    
     let state_lock = state.lock().await;
     let pool = &state_lock.db_pool;
     
@@ -782,16 +784,22 @@ pub async fn upload_certificate(
     
     let mut certificate_data: Option<Vec<u8>> = None;
     let mut file_name: Option<String> = None;
+    let mut certificate_name: Option<String> = None;
     let mut password: Option<String> = None;
 
     // Parse multipart form data
+    eprintln!("🔵 Starting to parse multipart fields...");
     while let Some(field) = multipart.next_field().await.unwrap_or(None) {
         let name = field.name().unwrap_or("").to_string();
+        eprintln!("🔵 Found field: {}", name);
         
         match name.as_str() {
             "certificate" => {
                 file_name = field.file_name().map(|s| s.to_string());
                 certificate_data = Some(field.bytes().await.unwrap_or_default().to_vec());
+            },
+            "name" => {
+                certificate_name = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
             },
             "password" => {
                 password = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
@@ -801,18 +809,21 @@ pub async fn upload_certificate(
     }
 
     let certificate_data = certificate_data.ok_or_else(|| {
+        eprintln!("❌ No certificate file provided");
         (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": "No certificate file provided" }))
         )
     })?;
 
-    let file_name = file_name.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Invalid file name" }))
-        )
-    })?;
+    eprintln!("🔵 Certificate data size: {} bytes", certificate_data.len());
+    eprintln!("🔵 File name: {:?}", file_name);
+    eprintln!("🔵 Certificate name: {:?}", certificate_name);
+    eprintln!("🔵 Password provided: {}", password.is_some());
+
+    let file_name = file_name.unwrap_or_else(|| {
+        certificate_name.clone().unwrap_or_else(|| "certificate".to_string())
+    });
 
     // Determine certificate type from extension
     let certificate_type = if let Some(ext) = file_name.split('.').last() {
@@ -828,16 +839,23 @@ pub async fn upload_certificate(
     if certificate_type == "p12" || certificate_type == "pfx" {
         // Require password for PKCS#12 files
         let password = password.ok_or_else(|| {
+            eprintln!("❌ No password provided for PKCS#12");
             (
                 StatusCode::BAD_REQUEST,
                 Json(json!({ "error": "Password is required for PKCS#12 files" }))
             )
         })?;
         
+        eprintln!("📋 Debug: Password value: {:?}", password);
+        eprintln!("📋 Debug: Certificate file size: {} bytes", certificate_data.len());
+        eprintln!("📋 Debug: Password length: {} chars", password.len());
+        eprintln!("📋 Debug: Password (first 2 chars): {}...", if password.len() >= 2 { &password[..2] } else { &password });
+        
         // Parse and validate PKCS#12
         let (cert, pkey) = match parse_pkcs12_certificate(&certificate_data, &password) {
             Ok(result) => result,
             Err(e) => {
+                eprintln!("❌ PKCS#12 parse error: {}", e);
                 return Err((
                     StatusCode::BAD_REQUEST,
                     Json(json!({ "error": format!("Invalid PKCS#12 file or password: {}", e) }))
@@ -1855,11 +1873,17 @@ pub fn create_router() -> axum::Router<AppState> {
     use axum::routing::{get, post, put, delete};
 
     axum::Router::new()
+        // Certificate management routes (with both old and new paths for compatibility)
         .route("/pdf-signature/certificates", post(upload_certificate))
         .route("/pdf-signature/certificates", get(list_certificates))
         .route("/pdf-signature/certificates/:id", delete(delete_certificate))
+        .route("/certificates/upload", post(upload_certificate))  // Frontend uses this
+        .route("/certificates", get(list_certificates))            // Frontend uses this
+        .route("/certificates/:id", delete(delete_certificate))    // Frontend uses this
+        // Settings routes
         .route("/pdf-signature/settings", get(get_pdf_signature_settings))
         .route("/pdf-signature/settings", put(update_pdf_signature_settings))
+        // Signing routes  
         .route("/pdf-signature/verify", post(verify_pdf_signature))
         .route("/pdf-signature/sign-visual-pdf", post(sign_visual_pdf))
         .route("/pdf-signature/sign-with-certificate", post(sign_pdf_with_certificate))

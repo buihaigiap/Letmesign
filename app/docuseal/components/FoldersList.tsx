@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Pagination } from '@mui/material';
@@ -14,14 +14,17 @@ interface FoldersListProps {
 }
 const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 12;
   const totalPages = Math.ceil(folders.length / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentFolders = folders.slice(indexOfFirstItem, indexOfLastItem);
 
-  if (folders.length === 0) return null;
-
+  useEffect (() => {
+    setCurrentPage(1);
+  }
+  , [folders]);
+  if (folders.length === 0) return '';
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95, y: 20 }}

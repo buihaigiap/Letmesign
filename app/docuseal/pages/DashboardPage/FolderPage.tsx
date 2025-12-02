@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import upstashService from '../../ConfigApi/upstashService';
-import { useToast } from '../../hooks/useToast';
+import toast from 'react-hot-toast';
 import TemplatesGrid from './TemplatesGrid';
 import FoldersList from '../../components/FoldersList';
 import { Button, TextField, IconButton } from '@mui/material';
@@ -37,7 +37,6 @@ const FolderPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState('');
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
-  const { showToast } = useToast();
 
   const findFolderById = (folders: Folder[], id: number): Folder | null => {
     for (const folder of folders) {
@@ -62,15 +61,15 @@ const FolderPage: React.FC = () => {
     try {
       const response = await upstashService.updateFolder(currentFolder.id, { name: newName.trim() });
       if (response.success) {
-        showToast('Folder name updated successfully', 'success');
+        toast.success('Folder name updated successfully');
         setIsEditing(false);
         // Update local state
         setCurrentFolder({ ...currentFolder, name: newName.trim() });
       } else {
-        showToast('Error updating folder name', 'error');
+        toast.error('Error updating folder name');
       }
     } catch (error) {
-      showToast('Error updating folder name', 'error');
+      toast.error('Error updating folder name');
     }
   };
 
@@ -91,18 +90,20 @@ const FolderPage: React.FC = () => {
     try {
       const response = await upstashService.deleteFolder(currentFolder.id);
       if (response.success) {
-        showToast('Folder deleted successfully', 'success');
+       
         // Navigate back to parent folder or home
         if (parentFolder) {
           window.location.href = `/folders/${parentFolder.id}`;
         } else {
           window.location.href = '/';
+           
         }
+        oast.success('Folder deleted successfully');
       } else {
-        showToast('Error deleting folder', 'error');
+        toast.error('Error deleting folder');
       }
     } catch (error) {
-      showToast('Error deleting folder', 'error');
+      toast.error('Error deleting folder');
     }
   };
   const fetchData = async () => {
@@ -127,7 +128,7 @@ const FolderPage: React.FC = () => {
       }
       setTemplates(folderTemplates.data);
     } catch (error) {
-      showToast('Error fetching folder data', 'error');
+      toast.error('Error fetching folder data');
     } finally {
       setLoading(false);
     }
@@ -137,7 +138,7 @@ const FolderPage: React.FC = () => {
     if (folderId) {
       fetchData();
     }
-  }, [folderId, showToast]);
+  }, [folderId]);
 
   return (
 <Box >
@@ -194,7 +195,10 @@ const FolderPage: React.FC = () => {
         <FoldersList folders={folders} title="" />
         {templates.length > 0 && (
             <div>
-                <TemplatesGrid templates={templates} onRefresh={fetchData} currentFolderId={Number(folderId)} />
+                <TemplatesGrid 
+                    templates={templates} 
+                    onRefresh={fetchData} 
+                    currentFolderId={Number(folderId)} />
             </div>
         )}
         <NewTemplateModal

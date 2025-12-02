@@ -198,6 +198,12 @@ const PDFSignaturePage = () => {
       return;
     }
 
+    console.log('🔵 Upload Certificate Debug:');
+    console.log('  File:', selectedFile.name, selectedFile.size, 'bytes');
+    console.log('  Name:', certificateName);
+    console.log('  Password length:', certificatePassword.length, 'chars');
+    console.log('  Password (first 2 chars):', certificatePassword.substring(0, 2) + '...');
+
     setUploadLoading(true);
     try {
       const formData = new FormData();
@@ -205,7 +211,14 @@ const PDFSignaturePage = () => {
       formData.append('name', certificateName);
       formData.append('password', certificatePassword);
 
+      console.log('🔵 FormData entries:');
+      for (let [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value instanceof File ? `${value.name} (${value.size} bytes)` : value);
+      }
+
       const token = localStorage.getItem('token');
+      console.log('🔵 Token:', token ? 'Present' : 'Missing');
+      
       const response = await fetch('/api/certificates/upload', {
         method: 'POST',
         headers: {
@@ -214,8 +227,13 @@ const PDFSignaturePage = () => {
         body: formData
       });
 
+      console.log('🔵 Response status:', response.status, response.statusText);
+
+      console.log('🔵 Response status:', response.status, response.statusText);
+
       if (!response.ok) {
         const text = await response.text();
+        console.log('❌ Error response:', text);
         let errorMsg = 'Upload failed';
         try {
           const errorData = JSON.parse(text);
@@ -227,6 +245,7 @@ const PDFSignaturePage = () => {
       }
 
       const result = await response.json();
+      console.log('✅ Success response:', result);
       if (result.data) {
         setCertificates(prev => [...prev, result.data]);
         toast.success(result.message || 'Certificate uploaded successfully');

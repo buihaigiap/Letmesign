@@ -444,16 +444,13 @@ pub fn parse_pkcs12_certificate(
     let pkcs12 = Pkcs12::from_der(pkcs12_data)
         .context("Invalid PKCS#12 format")?;
     
-    // Parse with password
-    let parsed = pkcs12.parse2(password)
+    // Parse with password - use parse() instead of parse2()
+    let parsed = pkcs12.parse(password)
         .context("Invalid password or corrupted PKCS#12 file")?;
     
-    // Extract certificate and private key
-    let cert = parsed.cert
-        .context("No certificate found in PKCS#12")?;
-    
-    let pkey = parsed.pkey
-        .context("No private key found in PKCS#12")?;
+    // Extract certificate and private key (parse() returns non-Option types)
+    let cert = parsed.cert;
+    let pkey = parsed.pkey;
     
     // Basic validation - check if certificate is not expired
     let now = Asn1Time::days_from_now(0)?;

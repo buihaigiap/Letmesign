@@ -859,9 +859,17 @@ pub async fn get_folder_templates(
             // Get templates in this folder
             match TemplateFolderQueries::get_team_templates_in_folder(pool, user_id, id).await {
                 Ok(db_templates) => {
-                    let templates = db_templates.into_iter()
-                        .map(|db_template| convert_db_template_to_template_without_fields(db_template))
-                        .collect();
+                    let mut templates = Vec::new();
+                    for db_template in db_templates {
+                        let mut template = convert_db_template_to_template_without_fields(db_template.clone());
+                        
+                        // Get username for the template owner
+                        if let Ok(Some(owner)) = crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
+                            template.user_name = Some(owner.name);
+                        }
+                        
+                        templates.push(template);
+                    }
                     ApiResponse::success(templates, "Templates retrieved successfully".to_string())
                 }
                 Err(e) => ApiResponse::internal_error(format!("Failed to get templates: {}", e)),

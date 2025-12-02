@@ -108,6 +108,9 @@ const ProfileSettings = () => {
                   <IconButton
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                     edge="end"
+                    sx={{
+                      color :'white'
+                    }}
                   >
                     {showCurrentPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
@@ -126,6 +129,9 @@ const ProfileSettings = () => {
                   <IconButton
                     onClick={() => setShowNewPassword(!showNewPassword)}
                     edge="end"
+                    sx={{
+                      color :'white'
+                    }}
                   >
                     {showNewPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
@@ -144,6 +150,9 @@ const ProfileSettings = () => {
                   <IconButton
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     edge="end"
+                    sx={{
+                      color :'white'
+                    }}
                   >
                     {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>

@@ -50,7 +50,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
                 <Link to="/" className="text-xl font-bold text-white">
-                    <img src='/logo.png' alt='Letmesign' width={250} />
+                    <img src='/logo.png' alt='Letmesign' width={180} />
                 </Link>
 
                 {/* Desktop Nav */}
