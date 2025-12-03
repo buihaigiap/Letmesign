@@ -9,6 +9,10 @@ use sha2::{Sha256, Digest};
 use sqlx::Row;
 use lopdf::Document;
 use x509_parser::prelude::*;
+use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
+use openssl::stack::Stack;
+use openssl::x509::store::X509StoreBuilder;
+use openssl::x509::X509StoreContext;
 
 use crate::{
     common::responses::ApiResponse,
@@ -24,6 +28,102 @@ use crate::{
         create_pkcs7_signature_with_cert, calculate_byte_range, verify_password,
     },
 };
+
+/// Load all trusted certificates for a user from database
+async fn load_trusted_certificates(
+    pool: &sqlx::PgPool,
+    user_id: i64,
+    account_id: Option<i64>,
+) -> Result<Vec<Certificate>, String> {
+    let query = r#"
+        SELECT id, user_id, account_id, name, certificate_data, certificate_type,
+               issuer, subject, serial_number, valid_from, valid_to, status,
+               fingerprint, key_password_encrypted, is_default, created_at, updated_at
+        FROM certificates
+        WHERE (user_id = $1 OR account_id = $2)
+          AND status = 'active'
+        ORDER BY is_default DESC, created_at DESC
+    "#;
+    
+    let rows = sqlx::query(query)
+        .bind(user_id)
+        .bind(account_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to load trusted certificates: {}", e))?;
+    
+    let mut certificates = Vec::new();
+    for row in rows {
+        let status_str: String = row.try_get("status").unwrap_or_else(|_| "active".to_string());
+        let status = status_str.parse::<CertificateStatus>().unwrap_or(CertificateStatus::Active);
+        
+        certificates.push(Certificate {
+            id: row.try_get("id").unwrap_or(0),
+            user_id: row.try_get("user_id").unwrap_or(0),
+            account_id: row.try_get("account_id").ok(),
+            name: row.try_get("name").unwrap_or_else(|_| "Unknown".to_string()),
+            certificate_data: row.try_get("certificate_data").unwrap_or_default(),
+            certificate_type: row.try_get("certificate_type").unwrap_or_else(|_| "unknown".to_string()),
+            issuer: row.try_get("issuer").ok(),
+            subject: row.try_get("subject").ok(),
+            serial_number: row.try_get("serial_number").ok(),
+            valid_from: row.try_get("valid_from").ok(),
+            valid_to: row.try_get("valid_to").ok(),
+            status,
+            fingerprint: row.try_get("fingerprint").ok(),
+            key_password_encrypted: row.try_get("key_password_encrypted").ok(),
+            is_default: row.try_get("is_default").unwrap_or(false),
+            created_at: row.try_get("created_at").unwrap_or_else(|_| Utc::now()),
+            updated_at: row.try_get("updated_at").unwrap_or_else(|_| Utc::now()),
+        });
+    }
+    
+    Ok(certificates)
+}
+
+/// Compare PDF certificate with trusted certificates
+/// Returns (is_trusted, certificate_name) tuple
+fn compare_certificate_with_trusted(
+    pdf_cert_info: &CertificateBasicInfo,
+    trusted_certs: &[Certificate],
+) -> (bool, Option<String>) {
+    // Try to match by serial number (most reliable)
+    if let Some(ref pdf_serial) = pdf_cert_info.serial_number {
+        for cert in trusted_certs {
+            if let Some(ref cert_serial) = cert.serial_number {
+                // Normalize serial numbers for comparison (remove colons, spaces, convert to lowercase)
+                let pdf_serial_norm = pdf_serial.replace(":", "").replace(" ", "").to_lowercase();
+                let cert_serial_norm = cert_serial.replace(":", "").replace(" ", "").to_lowercase();
+                
+                if pdf_serial_norm == cert_serial_norm {
+                    return (true, Some(cert.name.clone()));
+                }
+            }
+        }
+    }
+    
+    // Fallback: Try to match by issuer AND subject combination
+    if let (Some(ref pdf_issuer), Some(ref pdf_subject)) = 
+        (&pdf_cert_info.issuer, &pdf_cert_info.subject) {
+        for cert in trusted_certs {
+            if let (Some(ref cert_issuer), Some(ref cert_subject)) = 
+                (&cert.issuer, &cert.subject) {
+                // Normalize for comparison (trim whitespace, case-insensitive)
+                let pdf_issuer_norm = pdf_issuer.trim().to_lowercase();
+                let cert_issuer_norm = cert_issuer.trim().to_lowercase();
+                let pdf_subject_norm = pdf_subject.trim().to_lowercase();
+                let cert_subject_norm = cert_subject.trim().to_lowercase();
+                
+                if pdf_issuer_norm == cert_issuer_norm && pdf_subject_norm == cert_subject_norm {
+                    return (true, Some(cert.name.clone()));
+                }
+            }
+        }
+    }
+    
+    // No match found
+    (false, None)
+}
 
 /// Parse PDF date format: D:YYYYMMDDHHmmSSOHH'mm'
 /// Example: D:20250101120000+00'00'
@@ -108,15 +208,69 @@ fn extract_email_from_subject(subject: &str) -> Option<String> {
 }
 
 /// Parse PKCS#7 signature and extract certificate info
-fn parse_pkcs7_certificate(signature_bytes: &[u8]) -> Option<CertificateBasicInfo> {
-    // Try to parse as PKCS#7/CMS SignedData
-    // PKCS#7 structure: SEQUENCE { contentType, content }
-    // We need to extract the certificate from the SignedData
-    
-    // Skip if it's just placeholder zeros
-    if signature_bytes.iter().all(|&b| b == b'0') {
-        return None;
+/// Verify PKCS#7 signature against PDF content
+fn verify_pkcs7_signature(pdf_data: &[u8], signature_bytes: &[u8], byte_range: &[i64; 4]) -> Result<bool, String> {
+    // Extract signed content from PDF using ByteRange
+    let [offset1, len1, offset2, len2] = *byte_range;
+    if offset1 < 0 || len1 < 0 || offset2 < 0 || len2 < 0 {
+        return Ok(false);
     }
+
+    let offset1 = offset1 as usize;
+    let len1 = len1 as usize;
+    let offset2 = offset2 as usize;
+    let len2 = len2 as usize;
+
+    if offset1 + len1 > pdf_data.len() || offset2 + len2 > pdf_data.len() {
+        return Ok(false);
+    }
+
+    // Extract the content that was signed
+    let mut signed_content = Vec::new();
+    signed_content.extend_from_slice(&pdf_data[offset1..offset1 + len1]);
+    signed_content.extend_from_slice(&pdf_data[offset2..offset2 + len2]);
+
+    // Try to parse PKCS#7 signature
+    let pkcs7 = match Pkcs7::from_der(signature_bytes) {
+        Ok(p) => p,
+        Err(_) => {
+            // Try to decode from hex if it's hex-encoded
+            if signature_bytes.len() % 2 == 0 {
+                let mut decoded = Vec::new();
+                for i in (0..signature_bytes.len()).step_by(2) {
+                    if let Ok(byte) = u8::from_str_radix(&String::from_utf8_lossy(&signature_bytes[i..i+2]), 16) {
+                        decoded.push(byte);
+                    } else {
+                        return Ok(false);
+                    }
+                }
+                match Pkcs7::from_der(&decoded) {
+                    Ok(p) => p,
+                    Err(_) => return Ok(false),
+                }
+            } else {
+                return Ok(false);
+            }
+        }
+    };
+
+    // Perform cryptographic verification of the PKCS#7 signature
+    let mut store_builder = X509StoreBuilder::new()
+        .map_err(|_| "Failed to create certificate store")?;
+    let store = store_builder.build();
+
+    // For detached signature, verify against the signed content
+    match pkcs7.verify(&Stack::new().unwrap(), &store, Some(&signed_content), None, Pkcs7Flags::empty()) {
+        Ok(_) => Ok(true),
+        Err(e) => {
+            eprintln!("PKCS#7 verification failed: {}", e);
+            Ok(false)
+        }
+    }
+}
+
+/// Parse PKCS#7 signature and extract certificate info
+fn parse_pkcs7_certificate(signature_bytes: &[u8]) -> Option<CertificateBasicInfo> {
     
     // Try to find X.509 certificate in the PKCS#7 data
     // Certificates are typically embedded in PKCS#7 SignedData
@@ -185,7 +339,7 @@ fn parse_pkcs7_certificate(signature_bytes: &[u8]) -> Option<CertificateBasicInf
 }
 
 /// Extract PDF signature information using lopdf
-fn extract_pdf_signatures(pdf_data: &[u8]) -> Result<PDFVerificationResult, String> {
+fn extract_pdf_signatures(pdf_data: &[u8], trusted_certs: &[Certificate]) -> Result<PDFVerificationResult, String> {
     let doc = Document::load_mem(pdf_data)
         .map_err(|e| format!("Failed to load PDF: {}", e))?;
     
@@ -201,6 +355,8 @@ fn extract_pdf_signatures(pdf_data: &[u8]) -> Result<PDFVerificationResult, Stri
     let mut signature_filter: Option<String> = None;
     let mut signature_subfilter: Option<String> = None;
     let mut signature_format: Option<String> = None;
+    let mut all_signatures_valid = true; // Track if all signatures are cryptographically valid
+    let mut pdf_cert_info: Option<CertificateBasicInfo> = None; // Store extracted certificate for matching
     
     // Try multiple methods to find signatures
     debug_info.push_str("🔍 Searching for signatures...\n");
@@ -348,8 +504,10 @@ fn extract_pdf_signatures(pdf_data: &[u8]) -> Result<PDFVerificationResult, Stri
                                                                                         let pdf_size = pdf_data.len() as i64;
                                                                                         if total_covered > pdf_size {
                                                                                             sig_info.push_str(" ⚠️  INVALID - exceeds PDF size");
+                                                                                            all_signatures_valid = false;
                                                                                         } else if range_values.iter().any(|&v| v > 1000000000) {
                                                                                             sig_info.push_str(" ⚠️  SUSPICIOUS - placeholder values");
+                                                                                            all_signatures_valid = false;
                                                                                         } else {
                                                                                             sig_info.push_str(" ✓");
                                                                                         }
@@ -378,34 +536,74 @@ fn extract_pdf_signatures(pdf_data: &[u8]) -> Result<PDFVerificationResult, Stri
                                                                             sig_info.push_str("  Format: Valid PKCS#7/DER encoded ✓\n");
                                                                             if signature_format.is_none() {
                                                                                 signature_format = Some("PKCS#7/DER".to_string());
-                                                                            }                                                                                            // Try to parse certificate
-                                                                                            if let Some(cert_info) = parse_pkcs7_certificate(contents_bytes) {
-                                                                                                sig_info.push_str(&format!("  📜 Certificate Details:\n"));
-                                                                                                if let Some(ref issuer) = cert_info.issuer {
-                                                                                                    sig_info.push_str(&format!("     Issuer: {}\n", issuer));
-                                                                                                }
-                                                                                                if let Some(ref subject) = cert_info.subject {
-                                                                                                    sig_info.push_str(&format!("     Subject: {}\n", subject));
-                                                                                                }
-                                                                                                if let Some(ref serial) = cert_info.serial_number {
-                                                                                                    sig_info.push_str(&format!("     Serial: {}\n", serial));
-                                                                                                }
-                                                                                                if let Some(from) = cert_info.valid_from {
-                                                                                                    sig_info.push_str(&format!("     Valid From: {}\n", from));
-                                                                                                }
-                                                                                                if let Some(to) = cert_info.valid_to {
-                                                                                                    sig_info.push_str(&format!("     Valid To: {}\n", to));
-                                                                                                }
-                                                                                                
-                                                                                                // Store for response
-                                                                                                if cert_issuer.is_none() {
-                                                                                                    cert_issuer = cert_info.issuer.clone();
-                                                                                                    cert_subject = cert_info.subject.clone();
+                                                                            }
+                                                                            
+                                                                            // Perform cryptographic verification
+                                                                            if let Ok(range_array) = sig_dict.get(b"ByteRange") {
+                                                                                if let Ok(range_vals) = range_array.as_array() {
+                                                                                    if range_vals.len() == 4 {
+                                                                                        let byte_range = [
+                                                                                            range_vals[0].as_i64().unwrap_or(0),
+                                                                                            range_vals[1].as_i64().unwrap_or(0),
+                                                                                            range_vals[2].as_i64().unwrap_or(0),
+                                                                                            range_vals[3].as_i64().unwrap_or(0),
+                                                                                        ];
+                                                                                        
+                                                                                        // Check if ByteRange is valid (not placeholder)
+                                                                                        if !byte_range.iter().any(|&v| v > 1000000000) {
+                                                                                            match verify_pkcs7_signature(pdf_data, contents_bytes, &byte_range) {
+                                                                                                Ok(true) => {
+                                                                                                    sig_info.push_str("  🔐 Cryptographic verification: VALID ✓\n");
+                                                                                                },
+                                                                                                Ok(false) => {
+                                                                                                    sig_info.push_str("  🔐 Cryptographic verification: INVALID ⚠️\n");
+                                                                                                    all_signatures_valid = false;
+                                                                                                },
+                                                                                                Err(e) => {
+                                                                                                    sig_info.push_str(&format!("  🔐 Cryptographic verification: ERROR - {}\n", e));
+                                                                                                    all_signatures_valid = false;
                                                                                                 }
                                                                                             }
-                                                                                        } else if hex_str.starts_with("3030") {
-                                                                                            sig_info.push_str("  Format: Placeholder/ASCII zeros (not real signature) ⚠️\n");
+                                                                                        } else {
+                                                                                            sig_info.push_str("  🔐 Cryptographic verification: Skipped (placeholder ByteRange)\n");
+                                                                                            all_signatures_valid = false;
                                                                                         }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                                            
+                                                                            // Try to parse certificate
+                                                                            if let Some(cert_info) = parse_pkcs7_certificate(contents_bytes) {
+                                                                                sig_info.push_str(&format!("  📜 Certificate Details:\n"));
+                                                                                if let Some(ref issuer) = cert_info.issuer {
+                                                                                    sig_info.push_str(&format!("     Issuer: {}\n", issuer));
+                                                                                }
+                                                                                if let Some(ref subject) = cert_info.subject {
+                                                                                    sig_info.push_str(&format!("     Subject: {}\n", subject));
+                                                                                }
+                                                                                if let Some(ref serial) = cert_info.serial_number {
+                                                                                    sig_info.push_str(&format!("     Serial: {}\n", serial));
+                                                                                }
+                                                                                if let Some(from) = cert_info.valid_from {
+                                                                                    sig_info.push_str(&format!("     Valid From: {}\n", from));
+                                                                                }
+                                                                                if let Some(to) = cert_info.valid_to {
+                                                                                    sig_info.push_str(&format!("     Valid To: {}\n", to));
+                                                                                }
+                                                                                
+                                                                                // Store for response and trust validation
+                                                                                if cert_issuer.is_none() {
+                                                                                    cert_issuer = cert_info.issuer.clone();
+                                                                                    cert_subject = cert_info.subject.clone();
+                                                                                }
+                                                                                if pdf_cert_info.is_none() {
+                                                                                    pdf_cert_info = Some(cert_info.clone());
+                                                                                }
+                                                                            }
+                                                                        } else if hex_str.starts_with("3030") {
+                                                                            sig_info.push_str("  Format: Placeholder/ASCII zeros (not real signature) ⚠️\n");
+                                                                            all_signatures_valid = false;
+                                                                        }
                                                                                         
                                                                                         // Try to find text patterns in signature (for debugging)
                                                                                         if let Ok(sig_text) = String::from_utf8(contents_bytes.to_vec()) {
@@ -421,9 +619,7 @@ fn extract_pdf_signatures(pdf_data: &[u8]) -> Result<PDFVerificationResult, Stri
                                                                                         }
                                                                                     }
                                                                                 }
-                                                                            }
-                                                                            
-                                                                            // Extract certificate reference
+                                                                            }                                                                            // Extract certificate reference
                                                                             if let Ok(cert) = sig_dict.get(b"Cert") {
                                                                                 sig_info.push_str(&format!("  Certificate: {} (type: {})\n", 
                                                                                     "Present",
@@ -698,64 +894,70 @@ fn extract_pdf_signatures(pdf_data: &[u8]) -> Result<PDFVerificationResult, Stri
     
     let valid = signature_count > 0;
     
+    // Validation logic - now includes cryptographic verification
+    let is_valid = signature_count > 0 && all_signatures_valid && !signature_details.iter().any(|s| s.contains("⚠️"));
+    
+    // Check if certificate matches any trusted certificate
+    let (is_trusted, trusted_cert_name) = if let Some(ref cert_info) = pdf_cert_info {
+        compare_certificate_with_trusted(cert_info, trusted_certs)
+    } else {
+        // Fallback to old logic if no certificate info extracted
+        let old_is_trusted = cert_issuer.is_some() && !cert_issuer.as_ref().unwrap_or(&String::new()).contains("parsing not implemented");
+        (old_is_trusted, None)
+    };
+    
     // Count real vs placeholder signatures
     let real_count = signature_details.iter().filter(|s| !s.contains("Placeholder")).count();
     let placeholder_count = signature_details.iter().filter(|s| s.contains("Placeholder")).count();
     
-    let message = if valid {
-        if placeholder_count > 0 {
-            format!("PDF chứa {} chữ ký ({} thật, {} placeholder)", signature_count, real_count, placeholder_count)
+    let message = if valid && is_valid {
+        if is_trusted {
+            if let Some(ref cert_name) = trusted_cert_name {
+                format!("PDF contains {} valid signature(s) ✓ Signed with trusted certificate: {}", signature_count, cert_name)
+            } else {
+                format!("PDF contains {} valid signature(s) ✓ Signed with trusted certificate", signature_count)
+            }
+        } else if placeholder_count > 0 {
+            format!("PDF contains {} valid signatures ({} real, {} placeholder)", signature_count, real_count, placeholder_count)
         } else {
-            format!("PDF chứa {} chữ ký hợp lệ", signature_count)
+            format!("PDF contains {} valid signature(s) ⚠️ Signed with external certificate", signature_count)
         }
+    } else if valid && !is_valid {
+        "Document has been altered or contains invalid signatures".to_string()
     } else {
         "There are no signatures in this document".to_string()
     };
-    
-    let certificate_info = if cert_issuer.is_some() || cert_subject.is_some() {
-        // Extract email from subject to use as common_name
-        let email_from_cert = cert_subject.as_ref()
-            .and_then(|subj| extract_email_from_subject(subj));
-        
-        Some(CertificateBasicInfo {
-            issuer: cert_issuer.clone(),
-            subject: cert_subject.clone(),
-            serial_number: None,
-            valid_from: None,
-            valid_to: None,
-            common_name: email_from_cert.or_else(|| signer_name.clone()),
-        })
-    } else {
-        None
-    };
-    
-    // Determine signature type and validation status
-    let signature_type = if signature_count > 0 {
-        Some("Digital Signature (PKCS#7)".to_string())
-    } else {
-        None
-    };
-    
-    // Validation logic
-    let is_valid = signature_count > 0 && !signature_details.iter().any(|s| s.contains("⚠️"));
-    let is_trusted = cert_issuer.is_some() && !cert_issuer.as_ref().unwrap_or(&String::new()).contains("parsing not implemented");
     
     Ok(PDFVerificationResult {
         valid,
         message,
         details: Some(PDFSignatureDetails {
-            signer_name,
+            signer_name: signer_name.clone(),
             signing_time,
-            certificate_info,
+            certificate_info: if pdf_cert_info.is_some() {
+                pdf_cert_info.clone()
+            } else if cert_issuer.is_some() || cert_subject.is_some() {
+                Some(CertificateBasicInfo {
+                    issuer: cert_issuer,
+                    subject: cert_subject,
+                    serial_number: None,
+                    valid_from: None,
+                    valid_to: None,
+                    common_name: signer_name.clone(),
+                })
+            } else {
+                None
+            },
             reason,
             location,
             signature_count,
-            signature_type,
+            signature_type: signature_format.clone(),
             signature_filter,
             signature_subfilter,
             signature_format,
             is_valid,
             is_trusted,
+            trusted_certificate_name: trusted_cert_name,
         }),
     })
 }
@@ -794,7 +996,7 @@ pub async fn upload_certificate(
         eprintln!("🔵 Found field: {}", name);
         
         match name.as_str() {
-            "certificate" => {
+            "certificate" | "file" => {
                 file_name = field.file_name().map(|s| s.to_string());
                 certificate_data = Some(field.bytes().await.unwrap_or_default().to_vec());
             },
@@ -833,6 +1035,34 @@ pub async fn upload_certificate(
     };
 
     let fingerprint = format!("{:x}", md5::compute(&certificate_data));
+
+    // Check for duplicate certificate by fingerprint
+    let duplicate_check = sqlx::query(
+        "SELECT id, name FROM certificates WHERE user_id = $1 AND fingerprint = $2"
+    )
+    .bind(user_id)
+    .bind(&fingerprint)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error checking duplicates: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to check for duplicate certificates" }))
+        )
+    })?;
+
+    if let Some(existing) = duplicate_check {
+        let existing_name: String = existing.get("name");
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({ 
+                "error": format!("Certificate already exists: {}", existing_name),
+                "duplicate": true,
+                "existing_id": existing.get::<i64, _>("id")
+            }))
+        ));
+    }
 
     // Handle PKCS#12 files (.p12/.pfx)
     let (issuer, subject, serial_number, valid_from, valid_to, encrypted_password, private_key_pem) = 
@@ -951,6 +1181,7 @@ pub async fn upload_certificate(
         status: row.get::<String, _>("status").parse().unwrap_or(CertificateStatus::Active),
         fingerprint: row.get("fingerprint"),
         key_password_encrypted: encrypted_password,
+        is_default: false,  // Temporarily hardcode until migration runs
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     };
@@ -1015,6 +1246,7 @@ pub async fn list_certificates(
             valid_to: row.get("valid_to"),
             status: row.get::<String, _>("status").parse().unwrap_or(CertificateStatus::Active),
             fingerprint: row.get("fingerprint"),
+            is_default: false,  // Temporarily hardcode until migration runs
             created_at: row.get("created_at"),
         }
     }).collect();
@@ -1310,8 +1542,18 @@ pub async fn verify_pdf_signature(
 
     let file_hash = format!("{:x}", Sha256::digest(&pdf_data));
     
-    // Parse PDF and extract signature information
-    let result = match extract_pdf_signatures(&pdf_data) {
+    // Load trusted certificates for this user
+    let trusted_certs = load_trusted_certificates(pool, db_user.id, db_user.account_id)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to load trusted certificates: {}", e);
+            Vec::new()
+        });
+    
+    eprintln!("🔐 Loaded {} trusted certificate(s) for verification", trusted_certs.len());
+    
+    // Parse PDF and extract signature information with trusted certificate checking
+    let result = match extract_pdf_signatures(&pdf_data, &trusted_certs) {
         Ok(sig_info) => sig_info,
         Err(e) => PDFVerificationResult {
             valid: false,
@@ -1329,6 +1571,7 @@ pub async fn verify_pdf_signature(
                 signature_format: None,
                 is_valid: false,
                 is_trusted: false,
+                trusted_certificate_name: None,
             }),
         },
     };
@@ -1538,6 +1781,146 @@ pub async fn sign_pdf_with_certificate(
     }))
 }
 
+/// Sign PDF with certificate ID from URL path
+pub async fn sign_pdf_with_certificate_id(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+    Path(certificate_id): Path<i64>,
+    mut multipart: Multipart,
+) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let state_lock = state.lock().await;
+    let pool = &state_lock.db_pool;
+    
+    // Get user info
+    let db_user = UserQueries::get_user_by_id(pool, user_id).await
+        .map_err(|_| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to fetch user" }))
+        ))?
+        .ok_or_else(|| (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "User not found" }))
+        ))?;
+    
+    let mut pdf_data: Option<Vec<u8>> = None;
+    let mut password: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut location: Option<String> = None;
+
+    // Parse multipart form - accepting both "file" and "pdf" field names
+    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+        let name = field.name().unwrap_or("").to_string();
+        
+        match name.as_str() {
+            "file" | "pdf" => {
+                pdf_data = Some(field.bytes().await.unwrap_or_default().to_vec());
+            },
+            "password" => {
+                password = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
+            },
+            "reason" => {
+                reason = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
+            },
+            "location" => {
+                location = Some(String::from_utf8_lossy(&field.bytes().await.unwrap_or_default()).to_string());
+            },
+            _ => {}
+        }
+    }
+    
+    let pdf_bytes = pdf_data.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "No PDF file provided" }))
+        )
+    })?;
+    
+    // Fetch certificate from database
+    let cert_row: (Vec<u8>, Option<String>, Option<Vec<u8>>, Option<String>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>) = sqlx::query_as(
+        r#"
+        SELECT certificate_data, key_password_encrypted, private_key, issuer, subject, valid_from, valid_to
+        FROM certificates
+        WHERE id = $1 AND (user_id = $2 OR account_id = $3) AND certificate_type IN ('p12', 'pfx')
+        "#
+    )
+    .bind(certificate_id)
+    .bind(db_user.id)
+    .bind(db_user.account_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to fetch certificate" }))
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Certificate not found or not a PKCS#12 certificate" }))
+        )
+    })?;
+    
+    let (cert_data, encrypted_password, _private_key_pem, issuer, subject, valid_from, valid_to) = cert_row;
+    
+    // Check if certificate is expired
+    if let Some(valid_to) = valid_to {
+        if valid_to < chrono::Utc::now() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Certificate has expired" }))
+            ));
+        }
+    }
+    
+    // Get password - use provided password or decrypt stored password
+    let cert_password = if let Some(pwd) = password {
+        pwd
+    } else if let Some(encrypted_pwd) = encrypted_password {
+        // For now, return error if password not provided
+        // In production, you'd decrypt the stored password
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Password is required" }))
+        ));
+    } else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Certificate password not found" }))
+        ));
+    };
+    
+    // Parse certificate and private key
+    let (cert, pkey) = parse_pkcs12_certificate(&cert_data, &cert_password)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to parse certificate: {}", e) }))
+            )
+        })?;
+    
+    // Sign PDF
+    let signed_pdf = sign_pdf_with_uploaded_certificate(
+        &pdf_bytes,
+        &cert,
+        &pkey,
+        reason.as_deref().unwrap_or("Signed with uploaded certificate"),
+        location.as_deref().unwrap_or("Letmesign Platform"),
+    ).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to sign PDF: {}", e) }))
+        )
+    })?;
+    
+    // Return PDF as binary response
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "application/pdf")],
+        signed_pdf
+    ))
+}
+
 /// Helper function to sign PDF with uploaded certificate
 fn sign_pdf_with_uploaded_certificate(
     pdf_bytes: &[u8],
@@ -1548,13 +1931,37 @@ fn sign_pdf_with_uploaded_certificate(
 ) -> Result<Vec<u8>, String> {
     use lopdf::{Object, Dictionary};
     
-    // Load PDF
+    // SIMPLIFIED APPROACH: Just create PKCS#7 signature of entire PDF
+    // This doesn't create a properly embedded signature but allows testing verification
+    
+    // Create PKCS#7 signature of the PDF content
+    use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
+    use openssl::stack::Stack;
+    
+    let mut cert_stack = Stack::new().map_err(|e| format!("Stack error: {}", e))?;
+    let flags = Pkcs7Flags::DETACHED | Pkcs7Flags::BINARY;
+    
+    let pkcs7 = Pkcs7::sign(cert, pkey, &cert_stack, pdf_bytes, flags)
+        .map_err(|e| format!("PKCS#7 sign failed: {}", e))?;
+    
+    let signature_der = pkcs7.to_der()
+        .map_err(|e| format!("DER encode failed: {}", e))?;
+    
+    // Calculate byte range for signature
+    // ByteRange format: [0, offset_before_sig, offset_after_sig, length_after_sig]
+    // For simplicity, we'll use a placeholder approach
+    let signature_size = signature_der.len() * 2 + 2; // Hex encoding doubles size, plus < >
+    let byte_range: [u32; 4] = [
+        0,
+        pdf_bytes.len() as u32,
+        (pdf_bytes.len() + signature_size) as u32,
+        0,
+    ];
+    
+    // For now, return original PDF with signature in metadata (not a proper PDF signature)
+    // This is just to test the verification logic
     let mut doc = Document::load_mem(pdf_bytes)
         .map_err(|e| format!("Failed to load PDF: {}", e))?;
-    
-    // Reserve space for signature (estimate 8KB for PKCS#7)
-    let signature_size = 8192;
-    let byte_range = calculate_byte_range(pdf_bytes.len(), signature_size);
     
     // Create signature dictionary
     let mut sig_dict = Dictionary::new();
@@ -1869,6 +2276,146 @@ async fn add_real_digital_signature_to_pdf(
     Ok(output)
 }
 
+/// Set a certificate as the default certificate
+pub async fn set_default_certificate(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+    Path(cert_id): Path<i64>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, Json<serde_json::Value>)> {
+    let state_lock = state.lock().await;
+    let pool = &state_lock.db_pool;
+    
+    let db_user = UserQueries::get_user_by_id(pool, user_id).await
+        .map_err(|_| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to fetch user" }))
+        ))?
+        .ok_or_else(|| (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "User not found" }))
+        ))?;
+    
+    // Start transaction
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Transaction error: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Database transaction failed" }))
+        )
+    })?;
+    
+    // First, unset any existing default certificate for this user
+    sqlx::query(
+        "UPDATE certificates SET is_default = FALSE WHERE user_id = $1 OR account_id = $2"
+    )
+    .bind(db_user.id)
+    .bind(db_user.account_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to unset existing default certificate" }))
+        )
+    })?;
+    
+    // Then, set the specified certificate as default
+    let result = sqlx::query(
+        "UPDATE certificates SET is_default = TRUE WHERE id = $1 AND (user_id = $2 OR account_id = $3)"
+    )
+    .bind(cert_id)
+    .bind(db_user.id)
+    .bind(db_user.account_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to set default certificate" }))
+        )
+    })?;
+    
+    if result.rows_affected() == 0 {
+        tx.rollback().await.map_err(|e| {
+            eprintln!("Rollback error: {:?}", e);
+        });
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Certificate not found" }))
+        ));
+    }
+    
+    // Commit transaction
+    tx.commit().await.map_err(|e| {
+        eprintln!("Commit error: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to commit transaction" }))
+        )
+    })?;
+    
+    Ok(Json(ApiResponse {
+        success: true,
+        status_code: 200,
+        message: "Certificate set as default successfully".to_string(),
+        data: None,
+        error: None,
+    }))
+}
+
+/// Unset a certificate as the default certificate
+pub async fn unset_default_certificate(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+    Path(cert_id): Path<i64>,
+) -> Result<Json<ApiResponse<()>>, (StatusCode, Json<serde_json::Value>)> {
+    let state_lock = state.lock().await;
+    let pool = &state_lock.db_pool;
+    
+    let db_user = UserQueries::get_user_by_id(pool, user_id).await
+        .map_err(|_| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to fetch user" }))
+        ))?
+        .ok_or_else(|| (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "User not found" }))
+        ))?;
+    
+    let result = sqlx::query(
+        "UPDATE certificates SET is_default = FALSE WHERE id = $1 AND (user_id = $2 OR account_id = $3)"
+    )
+    .bind(cert_id)
+    .bind(db_user.id)
+    .bind(db_user.account_id)
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to unset default certificate" }))
+        )
+    })?;
+    
+    if result.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Certificate not found" }))
+        ));
+    }
+    
+    Ok(Json(ApiResponse {
+        success: true,
+        status_code: 200,
+        message: "Certificate unset as default successfully".to_string(),
+        data: None,
+        error: None,
+    }))
+}
+
 pub fn create_router() -> axum::Router<AppState> {
     use axum::routing::{get, post, put, delete};
 
@@ -1877,9 +2424,14 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/pdf-signature/certificates", post(upload_certificate))
         .route("/pdf-signature/certificates", get(list_certificates))
         .route("/pdf-signature/certificates/:id", delete(delete_certificate))
+        .route("/pdf-signature/certificates/:id/set-default", put(set_default_certificate))
+        .route("/pdf-signature/certificates/:id/unset-default", put(unset_default_certificate))
         .route("/certificates/upload", post(upload_certificate))  // Frontend uses this
         .route("/certificates", get(list_certificates))            // Frontend uses this
         .route("/certificates/:id", delete(delete_certificate))    // Frontend uses this
+        .route("/certificates/:id/set-default", put(set_default_certificate))    // Frontend uses this
+        .route("/certificates/:id/unset-default", put(unset_default_certificate))    // Frontend uses this
+        .route("/certificates/:id/sign", post(sign_pdf_with_certificate_id))  // Sign with certificate
         // Settings routes
         .route("/pdf-signature/settings", get(get_pdf_signature_settings))
         .route("/pdf-signature/settings", put(update_pdf_signature_settings))

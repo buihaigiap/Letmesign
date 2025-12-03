@@ -28,7 +28,8 @@ import {
   Add, 
   Delete,
   VerifiedUser,
-  Lock
+  Lock,
+  Star
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
@@ -44,6 +45,7 @@ interface Certificate {
   valid_to?: string;
   status: 'active' | 'expired' | 'revoked';
   fingerprint?: string;
+  is_default: boolean;
   created_at: string;
 }
 
@@ -63,7 +65,21 @@ const PDFSignaturePage = () => {
   const [verificationResult, setVerificationResult] = useState<{
     valid: boolean;
     message: string;
-    details?: any;
+    details?: {
+      signer_name?: string;
+      signing_time?: string;
+      certificate_info?: any;
+      reason?: string;
+      location?: string;
+      signature_count?: number;
+      signature_type?: string;
+      signature_filter?: string;
+      signature_subfilter?: string;
+      signature_format?: string;
+      is_valid?: boolean;
+      is_trusted?: boolean;
+      trusted_certificate_name?: string; // Name of the matched trusted certificate
+    };
     fileName?: string;
   } | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
@@ -288,6 +304,74 @@ const PDFSignaturePage = () => {
     } catch (error: any) {
       console.error('Delete error:', error);
       toast.error(error.message || 'Failed to delete certificate');
+    }
+  };
+
+  const handleSetDefaultCertificate = async (id: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/certificates/${id}/set-default`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to set default certificate';
+        try {
+          const errorData = JSON.parse(text);
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          errorMsg = text || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
+
+      // Update local state - set this certificate as default and unset others
+      setCertificates(prev => prev.map(cert => ({
+        ...cert,
+        is_default: cert.id === id
+      })));
+      toast.success('Certificate set as default');
+    } catch (error: any) {
+      console.error('Set default error:', error);
+      toast.error(error.message || 'Failed to set default certificate');
+    }
+  };
+
+  const handleUnsetDefaultCertificate = async (id: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/certificates/${id}/unset-default`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to unset default certificate';
+        try {
+          const errorData = JSON.parse(text);
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          errorMsg = text || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
+
+      // Update local state - unset this certificate as default
+      setCertificates(prev => prev.map(cert => ({
+        ...cert,
+        is_default: cert.id === id ? false : cert.is_default
+      })));
+      toast.success('Certificate unset as default');
+    } catch (error: any) {
+      console.error('Unset default error:', error);
+      toast.error(error.message || 'Failed to unset default certificate');
     }
   };
 
@@ -518,16 +602,81 @@ const PDFSignaturePage = () => {
             <Typography variant="body1" sx={{ fontWeight: 500, mb: 1 }}>
               {verificationResult.message}
             </Typography>
+            
+            {/* Trust Status Badge */}
+            {verificationResult.details && verificationResult.valid && (
+              <Box sx={{ mt: 1.5, mb: 2 }}>
+                {verificationResult.details.is_trusted && verificationResult.details.trusted_certificate_name ? (
+                  <Box 
+                    sx={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: 1,
+                      px: 2,
+                      py: 1,
+                      bgcolor: 'success.main',
+                      color: 'success.contrastText',
+                      borderRadius: 1,
+                      fontWeight: 600
+                    }}
+                  >
+                    <VerifiedUser fontSize="small" />
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      Signed with trusted certificate: {verificationResult.details.trusted_certificate_name}
+                    </Typography>
+                  </Box>
+                ) : verificationResult.details.is_trusted ? (
+                  <Box 
+                    sx={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: 1,
+                      px: 2,
+                      py: 1,
+                      bgcolor: 'success.main',
+                      color: 'success.contrastText',
+                      borderRadius: 1,
+                      fontWeight: 600
+                    }}
+                  >
+                    <VerifiedUser fontSize="small" />
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      Signed with trusted certificate
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box 
+                    sx={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: 1,
+                      px: 2,
+                      py: 1,
+                      bgcolor: 'warning.main',
+                      color: 'warning.contrastText',
+                      borderRadius: 1,
+                      fontWeight: 600
+                    }}
+                  >
+                    <Lock fontSize="small" />
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      Signed with external certificate
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            )}
+            
             {verificationResult.details && (
               <Box sx={{ mt: 2 }}>
                 {/* Signer Information */}
-                {verificationResult.details.common_name && (
+                {verificationResult.details.certificate_info?.common_name && (
                   <Box sx={{ mb: 1.5 }}>
                     <Typography variant="caption" sx={{display: 'block' }}>
                       Signer:
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {verificationResult.details.common_name}
+                      {verificationResult.details.certificate_info.common_name}
                     </Typography>
                   </Box>
                 )}
@@ -721,22 +870,46 @@ const PDFSignaturePage = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Box
-                        component="span"
-                        sx={{
-                          px: 1.5,
-                          py: 0.5,
-                          borderRadius: 1,
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          bgcolor: 
-                            cert.status === 'active' ? 'success.dark' :
-                            cert.status === 'expired' ? 'error.dark' : 'warning.dark',
-                          color: 'white'
-                        }}
-                      >
-                        {cert.status.toUpperCase()}
-                      </Box>
+                      {cert.is_default ? (
+                        <Box
+                          component="span"
+                          sx={{
+                            px: 1.5,
+                            py: 0.5,
+                            borderRadius: 1,
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            bgcolor: 'primary.main',
+                            color: 'white',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 0.5
+                          }}
+                        >
+                          <Star sx={{ fontSize: 14 }} />
+                          DEFAULT
+                        </Box>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleSetDefaultCertificate(cert.id)}
+                          sx={{
+                            fontSize: '0.75rem',
+                            py: 0.25,
+                            px: 1,
+                            minWidth: 'auto',
+                            borderColor: 'primary.main',
+                            color: 'primary.main',
+                            '&:hover': {
+                              borderColor: 'primary.dark',
+                              bgcolor: 'rgba(79, 70, 229, 0.1)'
+                            }
+                          }}
+                        >
+                          Make Default
+                        </Button>
+                      )}
                     </TableCell>
                     <TableCell align="right">
                       <IconButton 

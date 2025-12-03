@@ -479,8 +479,19 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
 
 /// Parse ASN.1 time string to chrono DateTime
 fn parse_asn1_time_to_chrono(time_str: &str) -> DateTime<Utc> {
+    eprintln!("🕐 Parsing ASN.1 time: '{}'", time_str);
+    
     // ASN.1 time format is like "231031120000Z" (YYMMDDHHMMSSZ)
     // or "20231031120000Z" (YYYYMMDDHHMMSSZ)
+    // or "Dec  3 04:12:25 2025 GMT" (OpenSSL display format)
+    
+    // Try parsing OpenSSL display format first
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(time_str.trim_end_matches(" GMT"), "%b %e %H:%M:%S %Y") {
+        let utc_dt = DateTime::<Utc>::from_utc(dt, Utc);
+        eprintln!("✅ Parsed as OpenSSL format: {}", utc_dt);
+        return utc_dt;
+    }
+    
     if time_str.len() >= 13 && time_str.ends_with('Z') {
         let time_part = &time_str[..time_str.len() - 1]; // Remove 'Z'
 

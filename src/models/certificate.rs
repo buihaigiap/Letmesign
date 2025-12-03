@@ -20,6 +20,7 @@ pub struct Certificate {
     pub fingerprint: Option<String>,
     #[serde(skip_serializing)] // Never expose encrypted password
     pub key_password_encrypted: Option<String>,
+    pub is_default: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -75,6 +76,7 @@ pub struct CertificateInfo {
     pub valid_to: Option<DateTime<Utc>>,
     pub status: CertificateStatus,
     pub fingerprint: Option<String>,
+    pub is_default: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -91,6 +93,7 @@ impl From<Certificate> for CertificateInfo {
             valid_to: cert.valid_to,
             status: cert.status,
             fingerprint: cert.fingerprint,
+            is_default: cert.is_default,
             created_at: cert.created_at,
         }
     }
@@ -162,9 +165,10 @@ pub struct PDFSignatureDetails {
     pub signature_format: Option<String>,
     pub is_valid: bool,
     pub is_trusted: bool,
+    pub trusted_certificate_name: Option<String>, // Name of the matched trusted certificate
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CertificateBasicInfo {
     pub issuer: Option<String>,
     pub subject: Option<String>,

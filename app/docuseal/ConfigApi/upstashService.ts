@@ -19,7 +19,7 @@ const upstashService = {
     },
     changePassword: async (data: any): Promise<any> => {
         const url = '/api/auth/change-password';
-        return await axiosClient.post(url, data)
+        return await axiosClient.put(url, data)
     },
     forgotPassword: async (data: any): Promise<any> => {
         const url = '/api/auth/forgot-password';

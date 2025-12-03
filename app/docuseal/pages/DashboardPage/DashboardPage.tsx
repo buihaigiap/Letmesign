@@ -36,7 +36,6 @@ const DashboardPage = () => {
     // Check for redirect after login
     const redirectUrl = localStorage.getItem('redirectAfterLogin');
     if (redirectUrl && token) {
-      console.log('Found redirect URL, navigating to:', redirectUrl);
       localStorage.removeItem('redirectAfterLogin');
       window.location.href = redirectUrl;
     }
@@ -79,7 +78,6 @@ const DashboardPage = () => {
         console.log('check2FARequirements: no user, skipping');
         return;
       }
-
 
       try {
         const settingsResponse = await upstashService.getBasicSettings();

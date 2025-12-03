@@ -9,7 +9,7 @@ import SignatureSection from './SignatureSection';
 import { useAuth } from '@/contexts/AuthContext';
 
 const ProfileSettings = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [signature, setSignature] = useState('');
@@ -34,6 +34,7 @@ const ProfileSettings = () => {
     e.preventDefault();
     try {
       await upstashService.updateProfile({ name, email });
+      await refreshUser(); // Refresh user data from server
       toast.success('Profile updated successfully');
     } catch (err) {
       toast.error('Failed to update profile');
@@ -56,8 +57,9 @@ const ProfileSettings = () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (err) {
-      toast.error('Failed to change password');
+    } catch (err: any) {
+      const errorMessage = err?.error || err?.data?.error || err?.message || err?.data?.message || 'Failed to change password';
+      toast.error(errorMessage);
     }
   };
 

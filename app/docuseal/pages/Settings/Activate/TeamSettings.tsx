@@ -41,7 +41,7 @@ const TeamSettings = () => {
       setUsers(response.data.users || []);
     } catch (err) {
       console.error('Failed to fetch team members:', err);
-      toast.error('Failed to fetch team members');
+      toast.error(err?.err || err?.data?.error || 'Unlock with Letmesign Pro' );
     } finally {
       setFetchLoading(false);
     }
@@ -56,7 +56,7 @@ const TeamSettings = () => {
       setArchivedUsers(response.data.users || []);
     } catch (err) {
       console.error('Failed to fetch archived members:', err);
-      toast.error('Failed to fetch archived members');
+      toast.error(err?.err || err?.data?.error || 'Unlock with Letmesign Pro' );
     }
   };
 

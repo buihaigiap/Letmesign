@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import upstashService from '../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 import TemplatesGrid from './TemplatesGrid';
@@ -37,7 +37,7 @@ const FolderPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState('');
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
-
+  const navigate = useNavigate();
   const findFolderById = (folders: Folder[], id: number): Folder | null => {
     for (const folder of folders) {
       if (folder.id === id) {
@@ -61,10 +61,10 @@ const FolderPage: React.FC = () => {
     try {
       const response = await upstashService.updateFolder(currentFolder.id, { name: newName.trim() });
       if (response.success) {
-        toast.success('Folder name updated successfully');
         setIsEditing(false);
         // Update local state
-        setCurrentFolder({ ...currentFolder, name: newName.trim() });
+          setCurrentFolder({ ...currentFolder, name: newName.trim() });
+          toast.success('Folder name updated successfully');
       } else {
         toast.error('Error updating folder name');
       }
@@ -80,7 +80,6 @@ const FolderPage: React.FC = () => {
 
   const handleDeleteFolder = async () => {
     if (!currentFolder) return;
-
     const confirmDelete = window.confirm(
       `Are you sure you want to delete the folder "${currentFolder.name}"? This action cannot be undone and will also delete all templates and subfolders inside it.`
     );
@@ -90,20 +89,16 @@ const FolderPage: React.FC = () => {
     try {
       const response = await upstashService.deleteFolder(currentFolder.id);
       if (response.success) {
-       
         // Navigate back to parent folder or home
         if (parentFolder) {
-          window.location.href = `/folders/${parentFolder.id}`;
+          navigate(`/folders/${parentFolder.id}`);
         } else {
-          window.location.href = '/';
-           
+          navigate('/');
         }
-        oast.success('Folder deleted successfully');
-      } else {
-        toast.error('Error deleting folder');
-      }
+        toast.success('Folder deleted successfully');
+      } 
     } catch (error) {
-      toast.error('Error deleting folder');
+      toast.error(error?.error);
     }
   };
   const fetchData = async () => {
@@ -111,8 +106,6 @@ const FolderPage: React.FC = () => {
       setLoading(true);
       const allFolders = await upstashService.getFolders();
       const folderTemplates = await upstashService.getFolderTemplates(Number(folderId));
-      console.log('allFolders:', allFolders);
-      console.log('folderId' , folderTemplates)
       // Find the current folder in the tree
       const currentFolder = findFolderById(allFolders.data, Number(folderId));
       // Get subfolders: the children of the current folder

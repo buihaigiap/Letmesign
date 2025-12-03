@@ -1,30 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Pagination } from '@mui/material';
+import Pagination from './Pagination';
+import { usePagination } from '../hooks/usePagination';
+
 interface Folder {
   id: number;
   name: string;
   parent_folder_id?: number;
   children?: Folder[];
 }
+
 interface FoldersListProps {
   folders: Folder[];
   title?: string;
 }
-const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" }) => {
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
-  const totalPages = Math.ceil(folders.length / itemsPerPage);
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentFolders = folders.slice(indexOfFirstItem, indexOfLastItem);
 
-  useEffect (() => {
-    setCurrentPage(1);
-  }
-  , [folders]);
-  if (folders.length === 0) return '';
+const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" }) => {
+  const itemsPerPage = 12;
+  const { currentPage, setCurrentPage, totalPages, currentItems } = usePagination({
+    items: folders,
+    itemsPerPage
+  });
+
+  if (folders.length === 0) return null;
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -38,7 +37,7 @@ const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" })
         gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
         gap: '1rem',
       }}>
-        {currentFolders.map((folder) => (
+        {currentItems.map((folder) => (
           <Link
             key={folder.id}
             to={`/folders/${folder.id}`}
@@ -74,20 +73,9 @@ const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" })
       </div>
       {totalPages > 1 && (
         <Pagination
-          count={totalPages}
-          page={currentPage}
-          onChange={(event, page) => setCurrentPage(page)}
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            marginTop: '1rem',
-            '& .MuiPaginationItem-root': {
-              color: 'white',
-            },
-            '& .Mui-selected': {
-              backgroundColor: 'rgba(30, 41, 59, 0.8)',
-            },
-          }}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
         />
       )}
     </motion.div>

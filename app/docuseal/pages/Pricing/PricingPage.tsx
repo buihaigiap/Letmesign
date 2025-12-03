@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import PricingComponent from './PricingComponent';
 import SubscriptionModal from './SubscriptionModal';
 import { plans } from './type';
+import { useNavigate } from 'react-router-dom';
 const PricingPage: React.FC = () => {
   const [modalState, setModalState] = useState<any>({ isOpen: false });
-  
+  const navigate = useNavigate();
   const [error, setError] = useState('');
 
   const handleSubscribe = (plan: any, price?: number, period?: 'monthly' | 'yearly') => {
     if (plan.id === 'free') {
       alert(`Enjoy the ${plan.name} plan! Your journey starts now.`);
+      navigate('/');
       return;
     }
     
@@ -17,6 +19,7 @@ const PricingPage: React.FC = () => {
     if (plan.id === 'pro' && price !== undefined && period) {
       setModalState({ isOpen: true, plan, price, period });
       setError('');
+      navigate('/');
     }
   };
 

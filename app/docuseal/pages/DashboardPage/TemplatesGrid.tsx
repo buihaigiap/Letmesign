@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Box, Card, CardContent, Typography, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,  Autocomplete } from '@mui/material';
 import {
-  AccessTime as AccessTimeIcon, 
+  AccessTime as AccessTimeIcon,
   PictureAsPdf as PictureAsPdfIcon,
-  Description as DescriptionIcon, 
-  Edit as EditIcon, 
-  ContentCopy as ContentCopyIcon, 
-  Delete as DeleteIcon, 
+  Description as DescriptionIcon,
+  Edit as EditIcon,
+  ContentCopy as ContentCopyIcon,
+  Delete as DeleteIcon,
   DragIndicator as DragIndicatorIcon,
   Person as PersonIcon
 } from '@mui/icons-material';
@@ -16,8 +16,10 @@ import { Template } from '../../types';
 import upstashService from '../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 import { canTemplate } from '@/hooks/useRoleAccess';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../hooks/usePagination';
 interface TemplatesGridProps {
-  templates: Template[];
+  templates: any;
   onRefresh: () => void;
   currentFolderId?: number | null;
 }
@@ -32,6 +34,12 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
   const [selectedValue, setSelectedValue] = useState<any>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const hasAccess = useRoleAccess(['agent']);
+
+  const itemsPerPage = 12;
+  const { currentPage, setCurrentPage, totalPages, currentItems } = usePagination({
+    items: templates,
+    itemsPerPage
+  });
   
   useEffect(() => {
     if (showMoveModal) {
@@ -183,7 +191,7 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
           px: { xs: 2, sm: 0 },
         }}
       >
-        {templates.map(template => (
+        {currentItems.map(template => (
           <Box key={template.id}>
             <motion.div
               variants={itemVariants}
@@ -316,6 +324,14 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
           </Box>
         ))}
       </Box>
+        {currentItems.length > 0 &&  (
+           <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+        )}
+      
 
       <Dialog
         open={showMoveModal} 
@@ -380,7 +396,14 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowMoveModal(false)}>Cancel</Button>
+          <Button 
+            sx={{ color: 'white' }}
+            onClick={() => {
+            setNewFolderName('');
+            setSelectedFolderId(null);
+            setSelectedValue(null);
+            setShowMoveModal(false);
+          }}>Cancel</Button>
           <Button onClick={handleSaveMove} variant="contained">Save</Button>
         </DialogActions>
       </Dialog>
