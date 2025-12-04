@@ -864,8 +864,22 @@ pub async fn get_folder_templates(
                         let mut template = convert_db_template_to_template_without_fields(db_template.clone());
                         
                         // Get username for the template owner
-                        if let Ok(Some(owner)) = crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
-                            template.user_name = Some(owner.name);
+                        match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
+                            Ok(Some(owner)) => {
+                                // Use name if available, fallback to email
+                                let display_name = if !owner.name.is_empty() {
+                                    owner.name
+                                } else {
+                                    owner.email
+                                };
+                                template.user_name = Some(display_name);
+                            }
+                            Ok(None) => {
+                                eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
+                            }
+                            Err(e) => {
+                                eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
+                            }
                         }
                         
                         templates.push(template);
@@ -973,8 +987,23 @@ pub async fn get_templates(
             for db_template in db_templates {
                 // Get user name for this template's owner
                 let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
-                    Ok(Some(user)) => Some(user.name.clone()), // Using name field instead of email
-                    _ => None,
+                    Ok(Some(user)) => {
+                        // Use name if available, fallback to email
+                        let display_name = if !user.name.is_empty() {
+                            user.name.clone()
+                        } else {
+                            user.email.clone()
+                        };
+                        Some(display_name)
+                    }
+                    Ok(None) => {
+                        eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
+                        None
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
+                        None
+                    }
                 };
                 
                 let mut template = convert_db_template_to_template_without_fields(db_template);
@@ -1027,8 +1056,23 @@ pub async fn get_template(
                 Ok(mut template) => {
                     // Get user name for this template's owner
                     let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, template.user_id).await {
-                        Ok(Some(user)) => Some(user.name.clone()),
-                        _ => None,
+                        Ok(Some(user)) => {
+                            // Use name if available, fallback to email
+                            let display_name = if !user.name.is_empty() {
+                                user.name.clone()
+                            } else {
+                                user.email.clone()
+                            };
+                            Some(display_name)
+                        }
+                        Ok(None) => {
+                            eprintln!("⚠️ User {} not found for template {}", template.user_id, template.id);
+                            None
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Error getting user {} for template {}: {}", template.user_id, template.id, e);
+                            None
+                        }
                     };
                     template.user_name = user_name;
                     ApiResponse::success(template, "Template retrieved successfully".to_string())
