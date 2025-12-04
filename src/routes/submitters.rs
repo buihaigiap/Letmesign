@@ -598,12 +598,21 @@ pub async fn submit_bulk_signatures(
         Err(e) => return ApiResponse::internal_error(format!("Failed to save bulk signatures: {}", e)),
     };
     
-    // Spawn background task for email notifications (non-blocking)
+    // Spawn background task for auto-sign and email notifications (non-blocking)
     let pool_clone = pool.clone();
     let submitter_id = db_submitter.id;
     let template_id = db_submitter.template_id;
     let user_id = db_submitter.user_id;
+    let submitter_status = updated_submitter.status.clone();
     tokio::spawn(async move {
+        // Auto-sign PDF if submitter completed
+        if submitter_status == "completed" || submitter_status == "signed" {
+            if let Err(e) = auto_sign_completed_submission(&pool_clone, submitter_id, template_id, user_id).await {
+                eprintln!("⚠️  Auto-sign skipped for submission {}: {}", submitter_id, e);
+            }
+        }
+        
+        // Send email notifications
         if let Err(e) = send_completion_notifications(&pool_clone, submitter_id, template_id, user_id).await {
             eprintln!("Background email notification error: {}", e);
         }
@@ -752,6 +761,69 @@ async fn handle_decline_action(
         }
         Ok(None) => ApiResponse::not_found("Submitter not found".to_string()),
         Err(e) => ApiResponse::internal_error(format!("Failed to decline document: {}", e)),
+    }
+}
+
+// Background task for auto-signing completed submission PDF
+async fn auto_sign_completed_submission(
+    pool: &PgPool,
+    submitter_id: i64,
+    template_id: i64,
+    user_id: i64,
+) -> Result<(), String> {
+    use crate::routes::pdf_signature::auto_sign_submission_pdf;
+    
+    eprintln!("🔄 Auto-sign: Checking submission {} for auto-sign eligibility", submitter_id);
+    
+    // Get all submitters for this template
+    let all_submitters = SubmitterQueries::get_submitters_by_template_id(pool, template_id)
+        .await
+        .map_err(|e| format!("Failed to get submitters: {}", e))?;
+    
+    // Check if ALL submitters are completed
+    let all_completed = all_submitters.iter()
+        .all(|s| s.status == "signed" || s.status == "completed");
+    
+    if !all_completed {
+        eprintln!("ℹ️  Auto-sign: Not all submitters completed yet. Skipping auto-sign.");
+        return Ok(());
+    }
+    
+    eprintln!("✅ Auto-sign: All submitters completed. Generating PDF...");
+    
+    // Generate combined PDF for all submitters
+    let storage_service = StorageService::new()
+        .await
+        .map_err(|e| format!("Failed to initialize storage: {}", e))?;
+    
+    let pdf_bytes = generate_signed_pdf_for_template_with_filter(
+        pool,
+        template_id,
+        &storage_service,
+        None, // Include all submitters
+    )
+    .await
+    .map_err(|e| format!("Failed to generate PDF: {}", e))?;
+    
+    eprintln!("📄 Auto-sign: PDF generated ({} bytes). Attempting to sign...", pdf_bytes.len());
+    
+    // Auto-sign the PDF
+    match auto_sign_submission_pdf(pool, user_id, &pdf_bytes).await {
+        Ok(signed_pdf_bytes) => {
+            eprintln!("✅ Auto-sign: PDF signed successfully ({} bytes)", signed_pdf_bytes.len());
+            
+            // TODO: Save signed PDF to storage
+            // This would require updating the submission or template with the signed PDF
+            // For now, just log success
+            eprintln!("ℹ️  Auto-sign: Signed PDF ready. Storage integration pending.");
+            
+            Ok(())
+        },
+        Err(e) => {
+            // Don't fail the submission, just log the error
+            eprintln!("⚠️  Auto-sign failed: {}", e);
+            Err(e)
+        }
     }
 }
 

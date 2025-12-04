@@ -2640,4 +2640,4 @@ fn render_signature_id_info(
     }
     
     // If nothing to show, return early
-    if signature_info_parts.is_empty() {
+    // if signature_info_parts.is_empty() {

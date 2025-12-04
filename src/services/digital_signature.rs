@@ -12,6 +12,8 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{DateTime, Utc, TimeZone};
+use openssl::symm::{Cipher, encrypt, decrypt};
+use openssl::rand::rand_bytes;
 
 /// Certificate Authority configuration
 pub struct CAConfig {
@@ -233,9 +235,32 @@ pub fn create_pkcs7_signature(
     
     // Extract content to sign (exclude signature placeholder)
     let [offset1, len1, offset2, len2] = *byte_range;
+    let pdf_len = pdf_data.len();
+    
+    // Validate byte ranges to prevent panic
+    let end1 = (offset1 + len1) as usize;
+    let end2 = (offset2 + len2) as usize;
+    
+    if offset1 as usize >= pdf_len || end1 > pdf_len {
+        return Err(anyhow::anyhow!(
+            "Invalid byte range: offset1={} len1={} end={} exceeds PDF size {}",
+            offset1, len1, end1, pdf_len
+        ));
+    }
+    
+    // Only validate offset2 if len2 > 0
+    if len2 > 0 && (offset2 as usize >= pdf_len || end2 > pdf_len) {
+        return Err(anyhow::anyhow!(
+            "Invalid byte range: offset2={} len2={} end={} exceeds PDF size {}",
+            offset2, len2, end2, pdf_len
+        ));
+    }
+    
     let mut content_to_sign = Vec::new();
-    content_to_sign.extend_from_slice(&pdf_data[offset1 as usize..(offset1 + len1) as usize]);
-    content_to_sign.extend_from_slice(&pdf_data[offset2 as usize..(offset2 + len2) as usize]);
+    content_to_sign.extend_from_slice(&pdf_data[offset1 as usize..end1]);
+    if len2 > 0 {
+        content_to_sign.extend_from_slice(&pdf_data[offset2 as usize..end2]);
+    }
     
     // Create certificate chain stack
     let mut cert_stack = Stack::new()?;
@@ -257,6 +282,77 @@ pub fn create_pkcs7_signature(
     let pkcs7_der = pkcs7.to_der()?;
     
     Ok(pkcs7_der)
+}
+
+/// Encrypt password using AES-256-GCM for auto-signing
+/// Returns: [12-byte nonce || encrypted_data || 16-byte tag]
+pub fn encrypt_password_aes(password: &str) -> Result<Vec<u8>> {
+    // Get master key from environment
+    let master_key = std::env::var("MASTER_ENCRYPTION_KEY")
+        .context("MASTER_ENCRYPTION_KEY not set. Generate with: openssl rand -base64 32")?;
+    
+    let key_bytes = base64::decode(&master_key)
+        .context("Invalid MASTER_ENCRYPTION_KEY format. Must be base64-encoded 32 bytes")?;
+    
+    if key_bytes.len() != 32 {
+        return Err(anyhow::anyhow!("MASTER_ENCRYPTION_KEY must be 32 bytes (256 bits)"));
+    }
+    
+    // Generate random 12-byte nonce for GCM
+    let mut nonce = vec![0u8; 12];
+    rand_bytes(&mut nonce)?;
+    
+    // Encrypt with AES-256-GCM
+    let cipher = Cipher::aes_256_gcm();
+    let ciphertext = encrypt(
+        cipher,
+        &key_bytes,
+        Some(&nonce),
+        password.as_bytes(),
+    )?;
+    
+    // Format: [nonce || ciphertext || tag]
+    // GCM tag is embedded in ciphertext by OpenSSL
+    let mut result = nonce;
+    result.extend_from_slice(&ciphertext);
+    
+    Ok(result)
+}
+
+/// Decrypt password using AES-256-GCM
+/// Input format: [12-byte nonce || encrypted_data || 16-byte tag]
+pub fn decrypt_password_aes(encrypted_data: &[u8]) -> Result<String> {
+    if encrypted_data.len() < 28 {  // 12 (nonce) + 16 (minimum: tag)
+        return Err(anyhow::anyhow!("Encrypted data too short"));
+    }
+    
+    // Get master key from environment
+    let master_key = std::env::var("MASTER_ENCRYPTION_KEY")
+        .context("MASTER_ENCRYPTION_KEY not set")?;
+    
+    let key_bytes = base64::decode(&master_key)
+        .context("Invalid MASTER_ENCRYPTION_KEY format")?;
+    
+    if key_bytes.len() != 32 {
+        return Err(anyhow::anyhow!("MASTER_ENCRYPTION_KEY must be 32 bytes"));
+    }
+    
+    // Extract nonce and ciphertext
+    let nonce = &encrypted_data[0..12];
+    let ciphertext = &encrypted_data[12..];
+    
+    // Decrypt with AES-256-GCM
+    let cipher = Cipher::aes_256_gcm();
+    let plaintext = decrypt(
+        cipher,
+        &key_bytes,
+        Some(nonce),
+        ciphertext,
+    )?;
+    
+    // Convert to string
+    String::from_utf8(plaintext)
+        .context("Decrypted data is not valid UTF-8")
 }
 
 /// Calculate ByteRange for PDF signature
@@ -586,9 +682,32 @@ pub fn create_pkcs7_signature_with_cert(
     
     // Extract content to sign (exclude signature placeholder)
     let [offset1, len1, offset2, len2] = *byte_range;
+    let pdf_len = pdf_data.len();
+    
+    // Validate byte ranges to prevent panic
+    let end1 = (offset1 + len1) as usize;
+    let end2 = (offset2 + len2) as usize;
+    
+    if offset1 as usize >= pdf_len || end1 > pdf_len {
+        return Err(anyhow::anyhow!(
+            "Invalid byte range: offset1={} len1={} end={} exceeds PDF size {}",
+            offset1, len1, end1, pdf_len
+        ));
+    }
+    
+    // Only validate offset2 if len2 > 0
+    if len2 > 0 && (offset2 as usize >= pdf_len || end2 > pdf_len) {
+        return Err(anyhow::anyhow!(
+            "Invalid byte range: offset2={} len2={} end={} exceeds PDF size {}",
+            offset2, len2, end2, pdf_len
+        ));
+    }
+    
     let mut content_to_sign = Vec::new();
-    content_to_sign.extend_from_slice(&pdf_data[offset1 as usize..(offset1 + len1) as usize]);
-    content_to_sign.extend_from_slice(&pdf_data[offset2 as usize..(offset2 + len2) as usize]);
+    content_to_sign.extend_from_slice(&pdf_data[offset1 as usize..end1]);
+    if len2 > 0 {
+        content_to_sign.extend_from_slice(&pdf_data[offset2 as usize..end2]);
+    }
     
     // Create certificate chain stack
     let mut cert_stack = Stack::new()?;

@@ -1181,7 +1181,7 @@ pub async fn upload_certificate(
         status: row.get::<String, _>("status").parse().unwrap_or(CertificateStatus::Active),
         fingerprint: row.get("fingerprint"),
         key_password_encrypted: encrypted_password,
-        is_default: false,  // Temporarily hardcode until migration runs
+        is_default: false,
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     };
@@ -1246,7 +1246,7 @@ pub async fn list_certificates(
             valid_to: row.get("valid_to"),
             status: row.get::<String, _>("status").parse().unwrap_or(CertificateStatus::Active),
             fingerprint: row.get("fingerprint"),
-            is_default: false,  // Temporarily hardcode until migration runs
+            is_default: false,
             created_at: row.get("created_at"),
         }
     }).collect();
@@ -2275,145 +2275,66 @@ async fn add_real_digital_signature_to_pdf(
     
     Ok(output)
 }
-
-/// Set a certificate as the default certificate
-pub async fn set_default_certificate(
-    State(state): State<AppState>,
-    Extension(user_id): Extension<i64>,
-    Path(cert_id): Path<i64>,
-) -> Result<Json<ApiResponse<()>>, (StatusCode, Json<serde_json::Value>)> {
-    let state_lock = state.lock().await;
-    let pool = &state_lock.db_pool;
+/// Auto-sign a submission PDF when all submitters complete
+/// This function is called automatically in the background
+pub async fn auto_sign_submission_pdf(
+    pool: &sqlx::PgPool,
+    user_id: i64,
+    pdf_bytes: &[u8],
+) -> Result<Vec<u8>, String> {
+    eprintln!("🔐 Auto-signing PDF for user {}...", user_id);
     
-    let db_user = UserQueries::get_user_by_id(pool, user_id).await
-        .map_err(|_| (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to fetch user" }))
-        ))?
-        .ok_or_else(|| (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "User not found" }))
-        ))?;
-    
-    // Start transaction
-    let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Transaction error: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database transaction failed" }))
-        )
-    })?;
-    
-    // First, unset any existing default certificate for this user
-    sqlx::query(
-        "UPDATE certificates SET is_default = FALSE WHERE user_id = $1 OR account_id = $2"
+    // Load first available certificate (auto-sign with any certificate)
+    let cert_row = sqlx::query(
+        "SELECT id, certificate_data, auto_sign_password_aes 
+         FROM certificates 
+         WHERE user_id = $1 AND status = 'active'
+         ORDER BY created_at DESC
+         LIMIT 1"
     )
-    .bind(db_user.id)
-    .bind(db_user.account_id)
-    .execute(&mut *tx)
+    .bind(user_id)
+    .fetch_optional(pool)
     .await
-    .map_err(|e| {
-        eprintln!("Database error: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to unset existing default certificate" }))
-        )
-    })?;
+    .map_err(|e| format!("Database error: {}", e))?
+    .ok_or_else(|| "No certificate found for auto-sign".to_string())?;
     
-    // Then, set the specified certificate as default
-    let result = sqlx::query(
-        "UPDATE certificates SET is_default = TRUE WHERE id = $1 AND (user_id = $2 OR account_id = $3)"
+    let cert_id: i64 = cert_row.get("id");
+    let cert_data: Vec<u8> = cert_row.get("certificate_data");
+    
+    // Try to get password from auto_sign_password_aes (bytea) or as string fallback
+    let password = if let Ok(password_bytes) = cert_row.try_get::<Vec<u8>, _>("auto_sign_password_aes") {
+        String::from_utf8(password_bytes)
+            .map_err(|_| "Invalid UTF-8 in auto_sign_password_aes".to_string())?
+    } else if let Ok(password_str) = cert_row.try_get::<String, _>("auto_sign_password_aes") {
+        password_str
+    } else {
+        return Err("Auto-sign password not set".to_string());
+    };
+    
+    eprintln!("✅ Found certificate ID: {} for auto-sign", cert_id);
+    
+    // Parse PKCS#12 certificate
+    let (cert, pkey) = parse_pkcs12_certificate(&cert_data, &password)
+        .map_err(|e| format!("Failed to parse certificate: {}", e))?;
+    
+    // Sign the PDF
+    let reason = "Automatically signed upon completion";
+    let location = "DocuSeal Pro Platform";
+    
+    eprintln!("✍️  Signing with reason: '{}'", reason);
+    
+    let signed_pdf = sign_pdf_with_uploaded_certificate(
+        pdf_bytes,
+        &cert,
+        &pkey,
+        reason,
+        location,
     )
-    .bind(cert_id)
-    .bind(db_user.id)
-    .bind(db_user.account_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| {
-        eprintln!("Database error: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to set default certificate" }))
-        )
-    })?;
+    .map_err(|e| format!("Failed to sign PDF: {}", e))?;
     
-    if result.rows_affected() == 0 {
-        tx.rollback().await.map_err(|e| {
-            eprintln!("Rollback error: {:?}", e);
-        });
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Certificate not found" }))
-        ));
-    }
+    eprintln!("✅ Auto-sign successful! Signed PDF size: {} bytes", signed_pdf.len());
     
-    // Commit transaction
-    tx.commit().await.map_err(|e| {
-        eprintln!("Commit error: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to commit transaction" }))
-        )
-    })?;
-    
-    Ok(Json(ApiResponse {
-        success: true,
-        status_code: 200,
-        message: "Certificate set as default successfully".to_string(),
-        data: None,
-        error: None,
-    }))
-}
-
-/// Unset a certificate as the default certificate
-pub async fn unset_default_certificate(
-    State(state): State<AppState>,
-    Extension(user_id): Extension<i64>,
-    Path(cert_id): Path<i64>,
-) -> Result<Json<ApiResponse<()>>, (StatusCode, Json<serde_json::Value>)> {
-    let state_lock = state.lock().await;
-    let pool = &state_lock.db_pool;
-    
-    let db_user = UserQueries::get_user_by_id(pool, user_id).await
-        .map_err(|_| (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to fetch user" }))
-        ))?
-        .ok_or_else(|| (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "User not found" }))
-        ))?;
-    
-    let result = sqlx::query(
-        "UPDATE certificates SET is_default = FALSE WHERE id = $1 AND (user_id = $2 OR account_id = $3)"
-    )
-    .bind(cert_id)
-    .bind(db_user.id)
-    .bind(db_user.account_id)
-    .execute(pool)
-    .await
-    .map_err(|e| {
-        eprintln!("Database error: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to unset default certificate" }))
-        )
-    })?;
-    
-    if result.rows_affected() == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Certificate not found" }))
-        ));
-    }
-    
-    Ok(Json(ApiResponse {
-        success: true,
-        status_code: 200,
-        message: "Certificate unset as default successfully".to_string(),
-        data: None,
-        error: None,
-    }))
+    Ok(signed_pdf)
 }
 
 pub fn create_router() -> axum::Router<AppState> {
@@ -2424,14 +2345,10 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/pdf-signature/certificates", post(upload_certificate))
         .route("/pdf-signature/certificates", get(list_certificates))
         .route("/pdf-signature/certificates/:id", delete(delete_certificate))
-        .route("/pdf-signature/certificates/:id/set-default", put(set_default_certificate))
-        .route("/pdf-signature/certificates/:id/unset-default", put(unset_default_certificate))
-        .route("/certificates/upload", post(upload_certificate))  // Frontend uses this
-        .route("/certificates", get(list_certificates))            // Frontend uses this
-        .route("/certificates/:id", delete(delete_certificate))    // Frontend uses this
-        .route("/certificates/:id/set-default", put(set_default_certificate))    // Frontend uses this
-        .route("/certificates/:id/unset-default", put(unset_default_certificate))    // Frontend uses this
-        .route("/certificates/:id/sign", post(sign_pdf_with_certificate_id))  // Sign with certificate
+        .route("/certificates/upload", post(upload_certificate))
+        .route("/certificates", get(list_certificates))
+        .route("/certificates/:id", delete(delete_certificate))
+        .route("/certificates/:id/sign", post(sign_pdf_with_certificate_id))
         // Settings routes
         .route("/pdf-signature/settings", get(get_pdf_signature_settings))
         .route("/pdf-signature/settings", put(update_pdf_signature_settings))

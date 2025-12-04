@@ -1,35 +1,14 @@
 import { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Button, 
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Switch,
-  FormControl,
-  Select,
-  MenuItem,
-  IconButton,
-  Alert,
-  CircularProgress,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField
+import { Box, Typography, Paper, Button, Table,TableBody,TableCell,TableContainer,TableHead,
+      TableRow,Switch,FormControl,Select,MenuItem,IconButton,Alert,CircularProgress,Dialog,
+      DialogTitle,DialogContent,DialogActions,TextField
 } from '@mui/material';
 import { 
   CloudUpload, 
   Add, 
   Delete,
   VerifiedUser,
-  Lock,
-  Star
+  Lock
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
@@ -213,13 +192,6 @@ const PDFSignaturePage = () => {
       toast.error('Please fill in all fields');
       return;
     }
-
-    console.log('🔵 Upload Certificate Debug:');
-    console.log('  File:', selectedFile.name, selectedFile.size, 'bytes');
-    console.log('  Name:', certificateName);
-    console.log('  Password length:', certificatePassword.length, 'chars');
-    console.log('  Password (first 2 chars):', certificatePassword.substring(0, 2) + '...');
-
     setUploadLoading(true);
     try {
       const formData = new FormData();
@@ -307,74 +279,6 @@ const PDFSignaturePage = () => {
     }
   };
 
-  const handleSetDefaultCertificate = async (id: number) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/certificates/${id}/set-default`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        let errorMsg = 'Failed to set default certificate';
-        try {
-          const errorData = JSON.parse(text);
-          errorMsg = errorData.error || errorData.message || errorMsg;
-        } catch {
-          errorMsg = text || errorMsg;
-        }
-        throw new Error(errorMsg);
-      }
-
-      // Update local state - set this certificate as default and unset others
-      setCertificates(prev => prev.map(cert => ({
-        ...cert,
-        is_default: cert.id === id
-      })));
-      toast.success('Certificate set as default');
-    } catch (error: any) {
-      console.error('Set default error:', error);
-      toast.error(error.message || 'Failed to set default certificate');
-    }
-  };
-
-  const handleUnsetDefaultCertificate = async (id: number) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/certificates/${id}/unset-default`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        let errorMsg = 'Failed to unset default certificate';
-        try {
-          const errorData = JSON.parse(text);
-          errorMsg = errorData.error || errorData.message || errorMsg;
-        } catch {
-          errorMsg = text || errorMsg;
-        }
-        throw new Error(errorMsg);
-      }
-
-      // Update local state - unset this certificate as default
-      setCertificates(prev => prev.map(cert => ({
-        ...cert,
-        is_default: cert.id === id ? false : cert.is_default
-      })));
-      toast.success('Certificate unset as default');
-    } catch (error: any) {
-      console.error('Unset default error:', error);
-      toast.error(error.message || 'Failed to unset default certificate');
-    }
-  };
-
   const handleSettingsChange = async (key: keyof PDFSignatureSettings, value: any) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
@@ -422,115 +326,6 @@ const PDFSignaturePage = () => {
       }
     }
   });
-
-//   const handleUploadCertificate = async (files: File[]) => {
-//     if (files.length === 0) return;
-
-//     setUploadLoading(true);
-//     try {
-//       const formData = new FormData();
-//       formData.append('certificate', files[0]);
-
-//       const token = localStorage.getItem('token');
-//       const response = await fetch('/api/pdf-signature/certificates', {
-//         method: 'POST',
-//         headers: {
-//           'Authorization': `Bearer ${token}`
-//         },
-//         body: formData
-//       });
-
-//       if (!response.ok) {
-//         const text = await response.text();
-//         let errorMsg = 'Upload failed';
-//         try {
-//           const errorData = JSON.parse(text);
-//           errorMsg = errorData.error || errorData.message || errorMsg;
-//         } catch {
-//           errorMsg = text || errorMsg;
-//         }
-//         throw new Error(errorMsg);
-//       }
-
-//       const result = await response.json();
-//       if (result.data) {
-//         setCertificates(prev => [...prev, result.data]);
-//         toast.success(result.message || 'Certificate uploaded successfully');
-//       }
-//     } catch (error: any) {
-//       console.error('Upload error:', error);
-//       toast.error(error.message || 'Failed to upload certificate');
-//     } finally {
-//       setUploadLoading(false);
-//     }
-//   };
-
-//   const handleDeleteCertificate = async (id: number) => {
-//     if (!confirm('Are you sure you want to delete this certificate?')) return;
-
-//     try {
-//       const token = localStorage.getItem('token');
-//       const response = await fetch(`/api/pdf-signature/certificates/${id}`, {
-//         method: 'DELETE',
-//         headers: {
-//           'Authorization': `Bearer ${token}`
-//         }
-//       });
-
-//       if (!response.ok) {
-//         const text = await response.text();
-//         let errorMsg = 'Delete failed';
-//         try {
-//           const errorData = JSON.parse(text);
-//           errorMsg = errorData.error || errorData.message || errorMsg;
-//         } catch {
-//           errorMsg = text || errorMsg;
-//         }
-//         throw new Error(errorMsg);
-//       }
-
-//       setCertificates(prev => prev.filter(cert => cert.id !== id));
-//       toast.success('Certificate deleted');
-//     } catch (error: any) {
-//       console.error('Delete error:', error);
-//       toast.error(error.message || 'Failed to delete certificate');
-//     }
-//   };
-
-//   const handleSettingsChange = async (key: keyof PDFSignatureSettings, value: any) => {
-//     const newSettings = { ...settings, [key]: value };
-//     setSettings(newSettings);
-
-//     try {
-//       const token = localStorage.getItem('token');
-//       const response = await fetch('/api/pdf-signature/settings', {
-//         method: 'PUT',
-//         headers: {
-//           'Content-Type': 'application/json',
-//           'Authorization': `Bearer ${token}`
-//         },
-//         body: JSON.stringify(newSettings)
-//       });
-
-//       if (!response.ok) {
-//         const text = await response.text();
-//         let errorMsg = 'Failed to save settings';
-//         try {
-//           const errorData = JSON.parse(text);
-//           errorMsg = errorData.error || errorData.message || errorMsg;
-//         } catch {
-//           errorMsg = text || errorMsg;
-//         }
-//         throw new Error(errorMsg);
-//       }
-
-//       const result = await response.json();
-//       toast.success(result.message || 'Settings saved');
-//     } catch (error: any) {
-//       console.error('Settings error:', error);
-//       toast.error(error.message || 'Failed to save settings');
-//     }
-//   };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -829,7 +624,6 @@ const PDFSignaturePage = () => {
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>NAME</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>ISSUER</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>VALID TO</TableCell>
-                <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>STATUS</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }} align="right">ACTIONS</TableCell>
               </TableRow>
             </TableHead>
@@ -868,48 +662,6 @@ const PDFSignaturePage = () => {
                       <Typography variant="body2">
                         {cert.valid_to ? new Date(cert.valid_to).toLocaleDateString('vi-VN') : 'N/A'}
                       </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {cert.is_default ? (
-                        <Box
-                          component="span"
-                          sx={{
-                            px: 1.5,
-                            py: 0.5,
-                            borderRadius: 1,
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            bgcolor: 'primary.main',
-                            color: 'white',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 0.5
-                          }}
-                        >
-                          <Star sx={{ fontSize: 14 }} />
-                          DEFAULT
-                        </Box>
-                      ) : (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => handleSetDefaultCertificate(cert.id)}
-                          sx={{
-                            fontSize: '0.75rem',
-                            py: 0.25,
-                            px: 1,
-                            minWidth: 'auto',
-                            borderColor: 'primary.main',
-                            color: 'primary.main',
-                            '&:hover': {
-                              borderColor: 'primary.dark',
-                              bgcolor: 'rgba(79, 70, 229, 0.1)'
-                            }
-                          }}
-                        >
-                          Make Default
-                        </Button>
-                      )}
                     </TableCell>
                     <TableCell align="right">
                       <IconButton 

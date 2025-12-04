@@ -40,6 +40,7 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
     items: templates,
     itemsPerPage
   });
+  console.log('TemplatesGrid Rendered with templates:', templates);
   
   useEffect(() => {
     if (showMoveModal) {
