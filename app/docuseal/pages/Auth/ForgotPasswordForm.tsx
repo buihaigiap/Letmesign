@@ -27,11 +27,8 @@ const ForgotPasswordForm: React.FC = () => {
             return;
         }
 
-        console.log('Email being sent:', email);
-
         try {
             const data = await upstashService.forgotPassword({ email });
-            console.log('API Response:', data);
 
             if (data.success) {
                 setSuccess('Reset code has been sent to your email!');
@@ -41,7 +38,6 @@ const ForgotPasswordForm: React.FC = () => {
                 }, 2000);
             }   
         } catch (err) {
-            console.error('API Error:', err);
             setError(err?.error);
         } finally {
             setLoading(false);
@@ -64,7 +60,7 @@ const ForgotPasswordForm: React.FC = () => {
                 setError(data.message || 'Password reset failed');
             }
         } catch (err) {
-            setError('An error occurred. Please try again.');
+             setError(err?.error);
         } finally {
             setLoading(false);
         }
@@ -267,13 +263,7 @@ const ForgotPasswordForm: React.FC = () => {
                                         ) : (
                                             <>
                                                 Reset Password
-                                                <motion.div
-                                                    initial={{ x: -10, opacity: 0 }}
-                                                    animate={{ x: 0, opacity: 1 }}
-                                                    transition={{ delay: 0.2 }}
-                                                >
-                                                    →
-                                                </motion.div>
+                                            
                                             </>
                                         )}
                                     </span>
@@ -287,7 +277,7 @@ const ForgotPasswordForm: React.FC = () => {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.8 }}
-                            onClick={() => step === 'reset' ? setStep('email') : navigate('/login')}
+                            onClick={() => { setError(''); step === 'reset' ? setStep('email') : navigate('/login'); }}
                             className="w-full mt-6 py-3 px-4 rounded-xl text-sm font-medium text-slate-400 hover:text-violet-400 transition-colors duration-200 flex items-center justify-center gap-2 group"
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}

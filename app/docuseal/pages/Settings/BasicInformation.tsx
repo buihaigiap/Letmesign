@@ -48,6 +48,20 @@ export default function BasicInformation({
   const [loading, setLoading] = useState(false);
 
   const handleUpdate = async () => {
+    // Validation
+    if (!companyName.trim()) {
+      toast.error('Please enter company name');
+      return;
+    }
+    if (!timezone) {
+      toast.error('Please select timezone');
+      return;
+    }
+    if (!locale) {
+      toast.error('Please select language');
+      return;
+    }
+
     setLoading(true);
     try {
       await upstashService.updateUserSettings({

@@ -38,6 +38,7 @@ const FolderPage: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
   const navigate = useNavigate();
+  
   const findFolderById = (folders: Folder[], id: number): Folder | null => {
     for (const folder of folders) {
       if (folder.id === id) {

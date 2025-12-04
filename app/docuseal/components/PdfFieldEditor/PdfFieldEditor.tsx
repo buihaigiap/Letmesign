@@ -87,7 +87,9 @@ const DocumentEditor = forwardRef<any>(function DocumentEditor({ template, token
 
   // Expose saveFields method via ref
   useImperativeHandle(ref, () => ({
-    saveFields: handleSaveClick
+    saveFields: handleSaveClick,
+    getPartners: () => partners,
+    getFields: () => fields
   }));
 
   // Fetch global settings for logo display

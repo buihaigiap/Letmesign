@@ -68,6 +68,18 @@ const TemplateEditorPage = () => {
   const handleSave = async () => {
     if (!editorRef.current) return;
 
+    // Validation: Check if each partner has at least one field
+    const partners = editorRef.current.getPartners ? editorRef.current.getPartners() : [];
+    const fields = editorRef.current.getFields ? editorRef.current.getFields() : [];
+
+    for (const partner of partners) {
+      const hasField = fields.some((field: any) => field.partner === partner);
+      if (!hasField) {
+        toast.error(`Please add fields for the ${partner}. Or, remove the ${partner} if not needed.`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const result = await editorRef.current.saveFields();

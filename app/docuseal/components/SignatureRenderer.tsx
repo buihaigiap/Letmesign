@@ -192,7 +192,7 @@ const SignatureRenderer: React.FC<SignatureRendererProps> = ({
       const fontStyle = isInitials ? 'italic' : 'normal';
       const fontFamily = isInitials ? 'Helvetica, sans-serif' : 'sans-serif';
       
-      let fontSize = '12px';
+      let fontSize = '100px';
       let transform = 'none';
       
       if (isInitials) {

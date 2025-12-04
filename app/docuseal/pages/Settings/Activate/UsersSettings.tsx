@@ -108,7 +108,7 @@ const UsersSettings = () => {
         handleClose();
       } 
     } catch (error) {
-      toast.error(error?.message );
+      toast.error(error?.error || error?.message || 'Failed to submit user data');
     } finally {
       setLoading(false);
     }

@@ -35,7 +35,8 @@ const Pagination: React.FC<PaginationProps> = ({
             color: 'white',
           },
           '& .Mui-selected': {
-            backgroundColor: 'rgba(30, 41, 59, 0.8)',
+            fontSize: '1.2rem',
+            fontWeight: 'bold',
           },
           '& .MuiPaginationItem-root:hover': {
             backgroundColor: 'rgba(30, 41, 59, 0.6)',

@@ -18,8 +18,6 @@ const AuthForm: React.FC<{ isRegister?: boolean }> = ({ isRegister }) => {
     const [searchParams] = useSearchParams();
     const redirectUrl = searchParams.get('redirect');
 
-    console.log('AuthForm mount - searchParams redirect:', redirectUrl);
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -43,12 +41,8 @@ const AuthForm: React.FC<{ isRegister?: boolean }> = ({ isRegister }) => {
                 if (data.success) {
                     login(data.data.token, data.data.user);
                     // Store redirect URL if present
-                    console.log('Login success - Redirect URL:', redirectUrl);
                     if (redirectUrl) {
                         localStorage.setItem( 'redirectAfterLogin', redirectUrl);
-                        console.log('Stored redirect URL:', redirectUrl);
-                    } else {
-                        console.log('No redirect URL');
                     }
                     navigate('/');
                 } else {

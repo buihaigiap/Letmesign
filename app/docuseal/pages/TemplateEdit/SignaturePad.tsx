@@ -5,6 +5,7 @@ import { PenLine, Type, Eraser, Upload } from 'lucide-react';
 import upstashService from '../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 import { useBasicSettings } from '../../hooks/useBasicSettings';
+import { t } from 'i18next';
 interface SignaturePadProps {
   onSave: (dataUrl: string) => void;
   onClear?: () => void;
@@ -12,9 +13,14 @@ interface SignaturePadProps {
   onFileSelected?: (file: File | null) => void; // New prop for file handling
   onUploadComplete?: () => void; // New prop to notify when upload is complete
   fieldType?: string; // 'signature' or 'initials'
+  noType?: boolean;
 }
 
-const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear, initialData, onFileSelected, onUploadComplete, fieldType = 'signature' }) => {
+const SignaturePad: React.FC<SignaturePadProps> = ({ 
+  onSave, onClear, initialData,
+  onFileSelected, onUploadComplete,
+  fieldType = 'signature', noType = false
+  }) => {
   const sigPadRef = useRef<SignatureCanvas>(null);
   const [isEmpty, setIsEmpty] = useState(true);
   const [mode, setMode] = useState<'draw' | 'type' | 'upload'>('draw');
@@ -153,14 +159,16 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear, initialDat
         >
           Draw
         </Button>
-        <Button
-          startIcon={<Type size={18} />}
-          variant={mode === 'type' ? 'contained' : 'outlined'}
-          onClick={() => handleModeChange('type')}
-          sx={{ textTransform: 'none', borderRadius: 2, px: 2 , color:'white' }}
+        {!noType && (
+          <Button
+            startIcon={<Type size={18} />}
+            variant={mode === 'type' ? 'contained' : 'outlined'}
+            onClick={() => handleModeChange('type')}
+            sx={{ textTransform: 'none', borderRadius: 2, px: 2 , color:'white' }}
         >
           Type
         </Button>
+        )}
         <Button
           startIcon={<Upload size={18} />}
           variant={mode === 'upload' ? 'contained' : 'outlined'}

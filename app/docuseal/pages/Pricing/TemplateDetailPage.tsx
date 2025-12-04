@@ -205,12 +205,6 @@ const TemplateDetailPage = () => {
     <Box>
       <Box >
         <Grid container spacing={2} alignItems="center" justifyContent="space-between">
-          <div >
-            <Typography
-              variant={isMobile ? "h5" : "h3"} component="h1" gutterBottom>
-              {t('templates.detail.title')}: {templateInfo?.template.name}
-            </Typography>
-          </div>
           <Grid >
             <Box sx={{ display: 'flex', gap: 1, flexDirection: isMobile ? 'column' : 'row' }}>
               <Button 
@@ -256,6 +250,13 @@ const TemplateDetailPage = () => {
               </Button>
             </Box>
           </Grid>
+          <div >
+            <Typography
+              variant={isMobile ? "h5" : "h3"} component="h1" gutterBottom
+              sx={{ direction: 'rtl' }}>
+              {t('templates.detail.title')}: {templateInfo?.template.name}
+            </Typography>
+          </div>
         </Grid>
       </Box>
 

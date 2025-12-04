@@ -211,8 +211,8 @@ const SignatureSection: React.FC<SignatureSectionProps> = ({
               <SignatureRenderer
                 color="white"
                 data={savedData}
-                width={300}
-                height={150}
+                width={500}
+                height={500}
                 fieldType={fieldType}
               />
             </CardContent>
@@ -250,6 +250,7 @@ const SignatureSection: React.FC<SignatureSectionProps> = ({
         </DialogTitle>
         <DialogContent dividers>
           <SignaturePad 
+            noType={true}
             onSave={handleSave} 
             onClear={() => {
               setTempData('');
