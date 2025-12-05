@@ -20,7 +20,7 @@ const SettingsPage = () => {
     { text: 'Team Accounts', path: '/settings/team' },
     { text: t('navigation.reminders'), path: '/settings/reminders' },
     { text: 'Personalization', path: '/settings/personalization' },
-    { text: 'PDF Signature', path: '/settings/pdf-signature' },
+    { text: 'E-Sign Settings', path: '/settings/pdf-signature' },
   ];
 
   return (

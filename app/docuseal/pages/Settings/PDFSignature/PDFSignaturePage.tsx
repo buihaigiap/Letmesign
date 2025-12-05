@@ -29,16 +29,15 @@ interface Certificate {
 }
 
 interface PDFSignatureSettings {
-  flattenForm: boolean;
   filenameFormat: string;
 }
 
 const PDFSignaturePage = () => {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [settings, setSettings] = useState<PDFSignatureSettings>({
-    flattenForm: false,
-    filenameFormat: 'document-name-signed'
+    filenameFormat: '{document.name}'
   });
+  console.log('🔵 Current PDF Signature Settings:', settings);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{
@@ -95,8 +94,7 @@ const PDFSignaturePage = () => {
           const settingsResult = await settingsResponse.json();
           if (settingsResult.data) {
             setSettings({
-              flattenForm: settingsResult.data.flatten_form || false,
-              filenameFormat: settingsResult.data.filename_format || 'document-name-signed'
+              filenameFormat: settingsResult.data.filename_format || '{document.name}'
             });
           }
         }
@@ -285,13 +283,21 @@ const PDFSignaturePage = () => {
 
     try {
       const token = localStorage.getItem('token');
+      
+      // Convert to snake_case for backend
+      const backendSettings = {
+        filename_format: newSettings.filenameFormat
+      };
+      
+      console.log('📤 Sending to backend:', backendSettings);
+      
       const response = await fetch('/api/pdf-signature/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(newSettings)
+        body: JSON.stringify(backendSettings)
       });
 
       if (!response.ok) {
@@ -760,19 +766,6 @@ const PDFSignaturePage = () => {
           Preferences
         </Typography>
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Box>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              Remove PDF form fillable fields from the signed PDF (flatten form)
-            </Typography>
-          </Box>
-          <Switch
-            checked={settings.flattenForm}
-            onChange={(e) => handleSettingsChange('flattenForm', e.target.checked)}
-            color="primary"
-          />
-        </Box>
-
         <Box>
           <Typography variant="body1" sx={{ fontWeight: 500, mb: 2 }}>
             Document download filename format
@@ -788,9 +781,38 @@ const PDFSignaturePage = () => {
                 }
               }}
             >
-              <MenuItem value="document-name-signed">Document Name - Signed.pdf</MenuItem>
-              <MenuItem value="document-name">Document Name.pdf</MenuItem>
-              <MenuItem value="document-name-date">Document Name - {new Date().toLocaleDateString()}.pdf</MenuItem>
+              <MenuItem value="{document.name}">
+                <Box>
+                  <Typography variant="body2">Document name.pdf</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    Example: Contract.pdf
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value="{document.name} - {submission.status}">
+                <Box>
+                  <Typography variant="body2">Document name - Signed.pdf</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    Example: Contract - Signed.pdf
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value="{document.name} - {submission.submitters}">
+                <Box>
+                  <Typography variant="body2">Document name - name@domain.com.pdf</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    Example: Contract - user@example.com.pdf
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value="{document.name} - {submission.submitters} - {submission.completed_at}">
+                <Box>
+                  <Typography variant="body2">Document name - name@domain.com - [Date].pdf</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    Example: Contract - user@example.com - Dec 5, 2025.pdf
+                  </Typography>
+                </Box>
+              </MenuItem>
             </Select>
           </FormControl>
         </Box>

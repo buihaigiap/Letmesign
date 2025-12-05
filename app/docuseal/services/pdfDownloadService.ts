@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { hashId } from '../constants/reminderDurations';
+import { getPDFPreferences, applyFilenameFormat } from './filenameFormatter';
 
 // Interface for audit log entry
 interface AuditLogEntry {
@@ -78,7 +79,6 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
 }): Promise<string> => {
   return new Promise((resolve, reject) => {
     try {
-      console.log('Starting renderSignatureToImage:', { width, height, dataLength: signatureData.length });
 
       // Use provided dimensions (already clamped by caller)
       const canvasWidth = Math.round(width);
@@ -104,7 +104,6 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
       // Parse signature data
       const pointGroups = JSON.parse(signatureData);
 
-      console.log('Parsed point groups:', pointGroups.length, 'groups');
 
       if (!pointGroups || pointGroups.length === 0) {
         reject(new Error('Empty signature data'));
@@ -127,7 +126,6 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
         });
       });
 
-      console.log('Signature bounds:', { minX, minY, maxX, maxY });
 
       const signatureWidth = maxX - minX;
       const signatureHeight = maxY - minY;
@@ -137,9 +135,6 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
         return;
       }
 
-      console.log('=== PDF DOWNLOAD SIGNATURE RENDER ===');
-      console.log('Canvas dimensions:', { canvasWidth, canvasHeight });
-      console.log('Signature dimensions:', { signatureWidth, signatureHeight });
 
       // Calculate text height dynamically (giống SignatureRenderer)
       let textHeight = 0;
@@ -155,7 +150,6 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
         textHeight = lineCount > 0 ? (lineCount - 1) * 8 + 8 + 2 : 0; // More precise: (lines-1)*lineHeight + fontSize + padding
       }
 
-      console.log('Text height calculation:', { textHeight, globalSettings_add_signature_id: options?.globalSettings?.add_signature_id_to_the_documents, require_signing_reason: options?.globalSettings?.require_signing_reason, reason: options?.reason });
 
       // Calculate scale to fit signature in canvas with minimal padding, giống web viewer
       const padding = 5;
@@ -163,14 +157,11 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
       const scaleY = ((canvasHeight - textHeight) - padding * 2) / signatureHeight;
       const scale = Math.min(scaleX, scaleY); // Use minimum scale to preserve aspect ratio
 
-      console.log('Scale calculation:', { scaleX, scaleY, scale, padding });
 
       // Calculate offset to center signature
       const offsetX = (canvasWidth - signatureWidth * scale) / 2 - minX * scale;
       const offsetY = ((canvasHeight - textHeight) - signatureHeight * scale) / 2 - minY * scale;
 
-      console.log('Positioning:', { offsetX, offsetY });
-      console.log('====================================');
 
       // Draw signature with natural line width similar to web viewer
       ctx.strokeStyle = '#000000';
@@ -248,7 +239,6 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
         }
       }
 
-      console.log('Drawing complete, converting to data URL');
 
       // Convert canvas to data URL
       const imageDataUrl = canvas.toDataURL('image/png');
@@ -259,7 +249,6 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
         return;
       }
 
-      console.log('✅ Image data URL created, length:', imageDataUrl.length);
       resolve(imageDataUrl);
     } catch (error) {
       console.error('❌ Error in renderSignatureToImage:', error);
@@ -275,7 +264,9 @@ export const downloadSignedPDF = async (
   templateName: string,
   submitterInfo?: { id: number; email: string } | null,
   globalSettings?: any,
-  auditLog?: AuditLogEntry[]
+  auditLog?: AuditLogEntry[],
+  submissionStatus?: string,
+  completedAt?: string
 ) => {
   // Fetch PDF file từ server với binary response
   const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
@@ -302,13 +293,6 @@ export const downloadSignedPDF = async (
     const field = signature.field_info;
     const signatureValue = signature.signature_value;
 
-    console.log('Processing field:', {
-      name: field.name,
-      type: field.field_type,
-      hasValue: !!signatureValue,
-      valuePreview: signatureValue?.substring(0, 50),
-      position: field.position
-    });
 
     if (!signatureValue || !field.position) continue;
 
@@ -317,9 +301,6 @@ export const downloadSignedPDF = async (
 
     const page = pages[pageIndex];
     const { width: pageWidth, height: pageHeight } = page.getSize();
-
-    console.log('Page dimensions:', { pageWidth, pageHeight, pageIndex });
-    console.log('Field position (raw):', field.position);
 
     // Normalize position giống như web viewer (sử dụng default PDF dimensions 600x800)
     const normalizePosition = (position: any) => {
@@ -343,7 +324,6 @@ export const downloadSignedPDF = async (
     };
 
     const normalizedPos = normalizePosition(field.position);
-    console.log('Field position (normalized):', normalizedPos);
 
     // DÙNG CÔNG THỨC GIỐNG FRONTEND (PdfViewer.tsx)
     // Position trong database là pixel values, normalize về relative (0-1) dùng default 600x800 như web viewer
@@ -351,27 +331,10 @@ export const downloadSignedPDF = async (
     const y = Math.max(0, Math.min(1, normalizedPos.y)) * pageHeight;
     const fieldWidth = Math.max(0, Math.min(1, normalizedPos.width)) * pageWidth;
     const fieldHeight = Math.max(0, Math.min(1, normalizedPos.height)) * pageHeight;
-
-    console.log('Calculated positions (clamped):', { x, y, fieldWidth, fieldHeight });
-
-    // DEBUG: Compare with web viewer positioning
-    console.log('=== POSITION DEBUG ===');
-    console.log('Raw position from DB (pixels):', field.position);
-    console.log('Normalized position (using 600x800 default):', normalizedPos);
-    console.log('Web-style CSS positioning would be:');
-    console.log(`  left: ${normalizedPos.x * 100}%`);
-    console.log(`  top: ${normalizedPos.y * 100}%`);
-    console.log(`  width: ${normalizedPos.width * 100}%`);
-    console.log(`  height: ${normalizedPos.height * 100}%`);
-    console.log('PDF positioning (actual page dimensions):');
-    console.log(`  fieldWidth: ${fieldWidth}, fieldHeight: ${fieldHeight}`);
-    console.log('======================');
-
     // PDF coordinates: bottom-left origin, nhưng ta cần convert từ top-left
     const pdfX = Math.max(0, Math.min(pageWidth - fieldWidth, x));
     const pdfY = Math.max(0, pageHeight - y - fieldHeight);
 
-    console.log(`  pdfX: ${pdfX}, pdfY: ${pdfY}`);
 
     // Render based on field type
     if (field.field_type === 'text' || field.field_type === 'date' || field.field_type === 'number') {
@@ -385,16 +348,6 @@ export const downloadSignedPDF = async (
         color: rgb(0, 0, 0),
       });
     } else if (field.field_type === 'signature' || field.field_type === 'initials') {
-      console.log('=== PDF DOWNLOAD FIELD POSITIONING ===');
-      console.log('Field ID:', field.id);
-      console.log('Field type:', field.field_type);
-      console.log('Raw position from DB:', field.position);
-      console.log('Normalized position (using default 600x800 like web viewer):', normalizedPos);
-      console.log('Actual PDF page dimensions:', { pageWidth, pageHeight });
-      console.log('Calculated field dimensions:', { fieldWidth, fieldHeight });
-      console.log('PDF coordinates:', { pdfX, pdfY });
-      console.log('====================================');
-
       // Xử lý chữ ký (có thể là image hoặc drawn signature)
       if (signatureValue.startsWith('data:image/')) {
         // Chữ ký dạng image - embed vào PDF
@@ -426,7 +379,6 @@ export const downloadSignedPDF = async (
         const canvasWidth = fieldWidth;
         const canvasHeight = fieldHeight;
 
-        console.log('Rendering vector signature, canvas:', canvasWidth, 'x', canvasHeight, 'PDF field:', fieldWidth, 'x', fieldHeight);
         try {
           // Render signature to canvas and get image data
           const signatureImageUrl = await renderSignatureToImage(
@@ -441,13 +393,11 @@ export const downloadSignedPDF = async (
             }
           );
 
-          console.log('Vector signature rendered to image, size:', signatureImageUrl.length);
 
           // Embed the rendered signature image at the exact field dimensions
           const imageBytes = await fetch(signatureImageUrl).then(res => res.arrayBuffer());
           const image = await pdfDoc.embedPng(imageBytes);
-
-          console.log('Embedding signature at:', { x: pdfX, y: pdfY, width: fieldWidth, height: fieldHeight });
+5
 
           page.drawImage(image, {
             x: pdfX,
@@ -456,7 +406,6 @@ export const downloadSignedPDF = async (
             height: fieldHeight,
           });
 
-          console.log('✅ Vector signature embedded successfully');
         } catch (err) {
           console.error('Error rendering vector signature:', err);
           // Fallback to text placeholder
@@ -523,19 +472,30 @@ export const downloadSignedPDF = async (
 
   // Add audit log pages if provided
   if (auditLog && auditLog.length > 0) {
-    console.log('Adding audit log pages:', auditLog.length, 'entries');
     await generateAuditLogPages(pdfDoc, auditLog, globalSettings);
   }
 
   // Save và download PDF
   const pdfBytesModified = await pdfDoc.save();
   
+  // Get filename format from user preferences
+  const preferences = await getPDFPreferences();
+  const filenameFormat = preferences?.filenameFormat || '{document.name}';
+  
+  // Generate filename based on user's format
+  const filename = applyFilenameFormat(filenameFormat, {
+    documentName: templateName,
+    submissionStatus: submissionStatus || 'signed',
+    submitterEmails: submitterInfo?.email ? [submitterInfo.email] : [],
+    completedAt: completedAt || new Date().toISOString()
+  });
+  
   // Send to backend to add digital signature structure
   try {
     const token = localStorage.getItem('token');
     const formData = new FormData();
-    const pdfBlob = new Blob([pdfBytesModified], { type: 'application/pdf' });
-    formData.append('pdf', pdfBlob, `${templateName}.pdf`);
+    const pdfBlob = new Blob([pdfBytesModified as any], { type: 'application/pdf' });
+    formData.append('pdf', pdfBlob, filename);
     formData.append('signer_email', submitterInfo?.email || 'unknown@letmesign.com');
     formData.append('signer_name', submitterInfo?.email || submitterInfo?.id ? `User ${submitterInfo.id}` : 'Unknown Signer');
     formData.append('reason', `Document signed via Letmesign on ${new Date().toLocaleDateString('vi-VN')}`);
@@ -556,15 +516,12 @@ export const downloadSignedPDF = async (
         const signedBlob = new Blob([signedPdfBytes], { type: 'application/pdf' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(signedBlob);
-        link.download = auditLog && auditLog.length > 0 
-          ? `signed_${templateName}_with_audit.pdf` 
-          : `signed_${templateName}.pdf`;
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(link.href);
         
-        console.log('✅ PDF downloaded with digital signature structure');
         return; // Success, exit function
       }
     }
@@ -576,12 +533,10 @@ export const downloadSignedPDF = async (
   }
   
   // Fallback: Download visual-only PDF if signing failed
-  const blob = new Blob([pdfBytesModified], { type: 'application/pdf' });
+  const blob = new Blob([pdfBytesModified as any], { type: 'application/pdf' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = auditLog && auditLog.length > 0 
-    ? `signed_${templateName}_with_audit.pdf` 
-    : `signed_${templateName}.pdf`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -840,7 +795,9 @@ export const downloadSignedPDFWithAuditLog = async (
   templateName: string,
   submitterInfo?: { id: number; email: string } | null,
   globalSettings?: any,
-  auditLog?: AuditLogEntry[]
+  auditLog?: AuditLogEntry[],
+  submissionStatus?: string,
+  completedAt?: string
 ) => {
   // Fetch PDF file từ server với binary response
   const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
@@ -866,15 +823,6 @@ export const downloadSignedPDFWithAuditLog = async (
   for (const signature of signatures) {
     const field = signature.field_info;
     const signatureValue = signature.signature_value;
-
-    console.log('Processing field:', {
-      name: field.name,
-      type: field.field_type,
-      hasValue: !!signatureValue,
-      valuePreview: signatureValue?.substring(0, 50),
-      position: field.position
-    });
-
     if (!signatureValue || !field.position) continue;
 
     const pageIndex = field.position.page - 1;
@@ -1029,16 +977,27 @@ export const downloadSignedPDFWithAuditLog = async (
 
   // Add audit log pages if provided
   if (auditLog && auditLog.length > 0) {
-    console.log('Adding audit log pages:', auditLog.length, 'entries');
     await generateAuditLogPages(pdfDoc, auditLog, globalSettings);
   }
+
+  // Get filename format from user preferences
+  const preferences = await getPDFPreferences();
+  const filenameFormat = preferences?.filenameFormat || '{document.name}';
+  
+  // Generate filename based on user's format
+  const filename = applyFilenameFormat(filenameFormat, {
+    documentName: templateName,
+    submissionStatus: submissionStatus || 'signed',
+    submitterEmails: submitterInfo?.email ? [submitterInfo.email] : [],
+    completedAt: completedAt || new Date().toISOString()
+  });
 
   // Save và download PDF
   const pdfBytesModified = await pdfDoc.save();
   const blob = new Blob([pdfBytesModified as any], { type: 'application/pdf' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `signed_${templateName}_with_audit.pdf`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

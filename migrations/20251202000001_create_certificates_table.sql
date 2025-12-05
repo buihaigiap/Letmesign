@@ -48,7 +48,6 @@ CREATE TABLE IF NOT EXISTS pdf_signature_settings (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
     account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE,
-    flatten_form BOOLEAN DEFAULT false,
     filename_format VARCHAR(100) DEFAULT 'document-name-signed',
     default_certificate_id BIGINT REFERENCES certificates(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

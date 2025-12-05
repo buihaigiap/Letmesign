@@ -1334,7 +1334,7 @@ pub async fn get_pdf_signature_settings(
         ))?;
     
     let query = r#"
-        SELECT id, user_id, account_id, flatten_form, filename_format, 
+        SELECT id, user_id, account_id, filename_format, 
                default_certificate_id, created_at, updated_at
         FROM pdf_signature_settings
         WHERE user_id = $1 OR account_id = $2
@@ -1359,7 +1359,6 @@ pub async fn get_pdf_signature_settings(
             id: Some(row.get("id")),
             user_id: row.get("user_id"),
             account_id: row.get("account_id"),
-            flatten_form: row.get("flatten_form"),
             filename_format: row.get("filename_format"),
             default_certificate_id: row.get("default_certificate_id"),
             created_at: Some(row.get("created_at")),
@@ -1370,8 +1369,7 @@ pub async fn get_pdf_signature_settings(
             id: None,
             user_id: Some(db_user.id),
             account_id: db_user.account_id,
-            flatten_form: false,
-            filename_format: "document-name-signed".to_string(),
+            filename_format: "{document.name}".to_string(),
             default_certificate_id: None,
             created_at: None,
             updated_at: None,
@@ -1428,19 +1426,6 @@ pub async fn update_pdf_signature_settings(
 
     if existing.is_some() {
         // Update existing settings
-        if let Some(flatten_form) = payload.flatten_form {
-            sqlx::query("UPDATE pdf_signature_settings SET flatten_form = $1 WHERE user_id = $2 OR account_id = $3")
-                .bind(flatten_form)
-                .bind(db_user.id)
-                .bind(db_user.account_id)
-                .execute(pool)
-                .await
-                .map_err(|e| {
-                    eprintln!("Database error: {:?}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to update settings" })))
-                })?;
-        }
-
         if let Some(filename_format) = &payload.filename_format {
             sqlx::query("UPDATE pdf_signature_settings SET filename_format = $1 WHERE user_id = $2 OR account_id = $3")
                 .bind(filename_format)
@@ -1461,17 +1446,16 @@ pub async fn update_pdf_signature_settings(
         // Insert new settings
         let query = r#"
             INSERT INTO pdf_signature_settings 
-            (user_id, account_id, flatten_form, filename_format, default_certificate_id)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, user_id, account_id, flatten_form, filename_format, 
+            (user_id, account_id, filename_format, default_certificate_id)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, user_id, account_id, filename_format, 
                       default_certificate_id, created_at, updated_at
         "#;
 
         let row = sqlx::query(query)
             .bind(db_user.id)
             .bind(db_user.account_id)
-            .bind(payload.flatten_form.unwrap_or(false))
-            .bind(payload.filename_format.unwrap_or_else(|| "document-name-signed".to_string()))
+            .bind(payload.filename_format.unwrap_or_else(|| "{document.name}".to_string()))
             .bind(payload.default_certificate_id)
             .fetch_one(pool)
             .await
@@ -1491,7 +1475,6 @@ pub async fn update_pdf_signature_settings(
                 id: Some(row.get("id")),
                 user_id: row.get("user_id"),
                 account_id: row.get("account_id"),
-                flatten_form: row.get("flatten_form"),
                 filename_format: row.get("filename_format"),
                 default_certificate_id: row.get("default_certificate_id"),
                 created_at: Some(row.get("created_at")),
@@ -1499,6 +1482,51 @@ pub async fn update_pdf_signature_settings(
             }),
             error: None,
         }))
+    }
+}
+
+/// GET /api/pdf-preferences/settings
+/// Frontend-friendly endpoint to get filename_format settings
+pub async fn get_pdf_preferences_for_frontend(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, (StatusCode, Json<serde_json::Value>)> {
+    let state_lock = state.lock().await;
+    let pool = &state_lock.db_pool;
+    
+    let db_user = UserQueries::get_user_by_id(pool, user_id).await
+        .map_err(|_| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to fetch user" }))
+        ))?
+        .ok_or_else(|| (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "User not found" }))
+        ))?;
+    
+    let account_id = db_user.account_id;
+    
+    use crate::services::pdf_preferences::get_user_pdf_settings;
+    
+    match get_user_pdf_settings(pool, user_id, account_id).await {
+        Ok(filename_format) => {
+            Ok(Json(ApiResponse {
+                success: true,
+                status_code: 200,
+                message: "PDF preferences retrieved".to_string(),
+                data: Some(json!({
+                    "filename_format": filename_format,
+                })),
+                error: None,
+            }))
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to get PDF preferences: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to get PDF preferences: {}", e) }))
+            ))
+        }
     }
 }
 
@@ -2120,6 +2148,8 @@ pub async fn sign_visual_pdf(
     // Add REAL cryptographic signature to PDF
     let signed_pdf = add_real_digital_signature_to_pdf(
         pool,
+        user_id,
+        db_user.account_id,
         &pdf_bytes,
         &name,
         &email,
@@ -2151,6 +2181,8 @@ pub async fn sign_visual_pdf(
 /// Helper function to add REAL digital signature to PDF
 async fn add_real_digital_signature_to_pdf(
     pool: &sqlx::PgPool,
+    user_id: i64,
+    account_id: Option<i64>,
     pdf_bytes: &[u8],
     signer_name: &str,
     signer_email: &str,
@@ -2262,13 +2294,15 @@ async fn add_real_digital_signature_to_pdf(
         // Create new AcroForm
         let mut acroform = Dictionary::new();
         acroform.set("Fields", Object::Array(vec![Object::Reference(sig_field_id)]));
+        
+        // Add signature field to catalog
         let acroform_id = doc.add_object(acroform);
         let catalog = doc.catalog_mut()
             .map_err(|e| format!("Failed to get catalog: {}", e))?;
         catalog.set("AcroForm", Object::Reference(acroform_id));
     }
     
-    // Save
+    // Save final PDF with signature
     let mut output = Vec::new();
     doc.save_to(&mut output)
         .map_err(|e| format!("Failed to save PDF: {}", e))?;
@@ -2352,6 +2386,8 @@ pub fn create_router() -> axum::Router<AppState> {
         // Settings routes
         .route("/pdf-signature/settings", get(get_pdf_signature_settings))
         .route("/pdf-signature/settings", put(update_pdf_signature_settings))
+        // PDF Preferences routes (for frontend)
+        .route("/pdf-preferences/settings", get(get_pdf_preferences_for_frontend))
         // Signing routes  
         .route("/pdf-signature/verify", post(verify_pdf_signature))
         .route("/pdf-signature/sign-visual-pdf", post(sign_visual_pdf))

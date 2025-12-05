@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, NaiveDateTime};
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -104,16 +104,14 @@ pub struct PDFSignatureSettings {
     pub id: Option<i64>,
     pub user_id: Option<i64>,
     pub account_id: Option<i64>,
-    pub flatten_form: bool,
     pub filename_format: String,
     pub default_certificate_id: Option<i64>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdatePDFSignatureSettings {
-    pub flatten_form: Option<bool>,
     pub filename_format: Option<String>,
     pub default_certificate_id: Option<i64>,
 }
