@@ -47,6 +47,19 @@ export default function BasicInformation({
   const [locale, setLocale] = useState(initialLocale);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    setCompanyName(initialCompanyName);
+  }, [initialCompanyName]);
+
+  useEffect(() => {
+    setTimezone(initialTimezone);
+  }, [initialTimezone]);
+
+  useEffect(() => {
+    setLocale(initialLocale);
+  }, [initialLocale]);
+
+  console.log('companyName' , companyName)
   const handleUpdate = async () => {
     // Validation
     if (!companyName.trim()) {

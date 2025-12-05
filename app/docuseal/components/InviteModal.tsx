@@ -27,7 +27,10 @@ const InviteModal: React.FC<InviteModalProps> = ({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        onPartnerEmailsChange(Object.fromEntries(Object.keys(partnerEmails).map(key => [key, ''])));
+        onClose();
+      }}
       maxWidth="sm"
       fullWidth
     >

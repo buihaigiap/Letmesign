@@ -479,21 +479,23 @@ const FormModal = ({
         )}
       </DialogContent>
       <DialogActions>
-        <Button
-          disabled={completing}
-          onClick={onPrevious}
-          variant="outlined"
-          color="inherit"
-          sx={{
-            borderColor: "#475569",
-            color: "#cbd5e1",
-            textTransform: "none",
-            fontWeight: 500,
-            "&:hover": { backgroundColor: "#334155" },
-          }}
-        >
-          Previous
-        </Button>
+        {currentFieldIndex > 0 && (
+          <Button
+            disabled={completing}
+            onClick={onPrevious}
+            variant="outlined"
+            color="inherit"
+            sx={{
+              borderColor: "#475569",
+              color: "#cbd5e1",
+              textTransform: "none",
+              fontWeight: 500,
+              "&:hover": { backgroundColor: "#334155" },
+            }}
+          >
+            Previous
+          </Button>
+        )}
         {!isLastField ? (
           <CreateTemplateButton
             onClick={onNext}

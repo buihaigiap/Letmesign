@@ -10,7 +10,7 @@ import { useBasicSettings } from '../../hooks/useBasicSettings';
 const GeneralSettings = () => {
   const { t } = useTranslation();
   const { globalSettings, loading, refetch } = useBasicSettings();
-
+  console.log('Global Settings:', globalSettings);
   // Extract preferences from global settings
   const preferences = globalSettings ? {
     force2fa: globalSettings.force_2fa_with_authenticator_app || false,
@@ -43,9 +43,9 @@ const GeneralSettings = () => {
       </Typography>
 
       <BasicInformation
-        initialCompanyName=""
-        initialTimezone=""
-        initialLocale=""
+        initialCompanyName={globalSettings?.company_name }
+        initialTimezone={globalSettings?.timezone }
+        initialLocale={globalSettings?.locale }
       />
 
       <PreferencesSection

@@ -301,7 +301,7 @@ const PdfDisplay = forwardRef<PdfDisplayRef, PdfDisplayProps>(({
               <div ref={overlayRef} className="absolute top-0 left-0 w-full h-full z-10">
                 {/* Company Logo and Name Overlay */}
                 {globalSettings && (globalSettings.logo_url || globalSettings.company_name) && (
-                  <div className="absolute top-4 left-4 right-4 z-20 flex items-center gap-4 bg-white bg-opacity-90 p-3 rounded-lg shadow-md">
+                  <div className="absolute top-4 left-4 right-4 z-20 flex items-center gap-4  p-3 ">
                     {globalSettings.logo_url && (
                       <img
                         src={globalSettings.logo_url.startsWith('http') ? globalSettings.logo_url : `${API_BASE_URL}${globalSettings.logo_url}`}

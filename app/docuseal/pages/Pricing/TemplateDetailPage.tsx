@@ -204,60 +204,55 @@ const TemplateDetailPage = () => {
   return (
     <Box>
       <Box >
-        <Grid container spacing={2} alignItems="center" justifyContent="space-between">
-          <Grid >
-            <Box sx={{ display: 'flex', gap: 1, flexDirection: isMobile ? 'column' : 'row' }}>
-              <Button 
-              sx={
-                { color: 'grey.300' }
-              }
-              variant="outlined" onClick={() => setShowInviteModal(true)}>
-                {t('templates.detail.inviteToSign')}
-              </Button>
-              {!hasAccess && (
-                <>
-                  {canTemplate(templateInfo?.template) && (
-                    <Button 
-                      sx={
-                        { color: 'grey.300' }
-                      }
-                      startIcon={<Copy size={16} />}
-                      variant="outlined"
-                      onClick={handleClone}>
-                        {t('templates.detail.clone')}
-                    </Button>
-                  )}
-                </>
-              )}
-               {!hasAccess && (
-                 <>
-                  {canTemplate(templateInfo?.template) && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Typography
+            variant={isMobile ? "h5" : "h3"} component="h1" gutterBottom
+            sx={{ flex: '0 0 auto', textAlign: 'left', minWidth: 0, mr: 2 }}>
+            {t('templates.detail.title')}: {templateInfo?.template.name}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', flex: '1 1 auto', minWidth: 0, justifyContent: 'flex-end' }}>
+            <Button variant="contained" onClick={() => navigate(`/templates/${id}/editor`)} size="small">
+               {!checkRole || hasAccess ? t('templates.detail.viewTemplate') : t('templates.detail.editTemplate')}
+            </Button>
+            <Button 
+            sx={
+              { color: 'grey.300' }
+            }
+            variant="outlined" onClick={() => setShowInviteModal(true)} size="small">
+              {t('templates.detail.inviteToSign')}
+            </Button>
+            {!hasAccess && (
+              <>
+                {canTemplate(templateInfo?.template) && (
                   <Button 
                     sx={
-                      { color: 'red', borderColor: 'red' }
+                      { color: 'grey.300' }
                     }
-                      startIcon={<Trash2 size={16} />}
-                      variant="outlined"
-                      onClick={handleDelete}>
-                        {t('templates.detail.delete')}
-                    </Button>
-                  )}
-                 </>
-               )}
-
-              <Button variant="contained" onClick={() => navigate(`/templates/${id}/editor`)}>
-                 {!checkRole || hasAccess ? t('templates.detail.viewTemplate') : t('templates.detail.editTemplate')}
-              </Button>
-            </Box>
-          </Grid>
-          <div >
-            <Typography
-              variant={isMobile ? "h5" : "h3"} component="h1" gutterBottom
-              sx={{ direction: 'rtl' }}>
-              {t('templates.detail.title')}: {templateInfo?.template.name}
-            </Typography>
-          </div>
-        </Grid>
+                    startIcon={<Copy size={16} />}
+                    variant="outlined"
+                    onClick={handleClone} size="small">
+                      {t('templates.detail.clone')}
+                  </Button>
+                )}
+              </>
+            )}
+             {!hasAccess && (
+               <>
+                {canTemplate(templateInfo?.template) && (
+                <Button 
+                  sx={
+                    { color: 'red', borderColor: 'red' }
+                  }
+                    startIcon={<Trash2 size={16} />}
+                    variant="outlined"
+                    onClick={handleDelete} size="small">
+                      {t('templates.detail.delete')}
+                  </Button>
+                )}
+               </>
+             )}
+          </Box>
+        </Box>
       </Box>
 
       {loading && <CircularProgress />}

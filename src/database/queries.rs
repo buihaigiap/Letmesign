@@ -2355,18 +2355,22 @@ impl GlobalSettingsQueries {
             None => return Ok(None),
         };
 
-        // If user has no account, return None
-        if account_id.is_none() {
-            return Ok(None);
-        }
-
-        // Query settings by account_id (team-wide settings)
-        let row = sqlx::query(
-            "SELECT id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at FROM global_settings WHERE account_id = $1"
-        )
-        .bind(account_id)
-        .fetch_optional(pool)
-        .await?;
+        // Query settings by account_id (if has account) or user_id (if no account)
+        let row = if let Some(acc_id) = account_id {
+            sqlx::query(
+                "SELECT id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at FROM global_settings WHERE account_id = $1"
+            )
+            .bind(acc_id)
+            .fetch_optional(pool)
+            .await?
+        } else {
+            sqlx::query(
+                "SELECT id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at FROM global_settings WHERE user_id = $1"
+            )
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?
+        };
 
         match row {
             Some(row) => Ok(Some(DbGlobalSettings {
@@ -2409,46 +2413,79 @@ impl GlobalSettingsQueries {
             None => return Err(sqlx::Error::RowNotFound),
         };
 
-        // Check if settings already exist for this account
-        // If account_id is NULL, use the global settings (id=1)
-        let query_str = if account_id.is_some() {
-            "SELECT id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at FROM global_settings WHERE account_id = $1".to_string()
+        // Check if settings already exist for this account (if user has account)
+        if let Some(acc_id) = account_id {
+            let query_str = "SELECT id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at FROM global_settings WHERE account_id = $1";
+            
+            if let Some(existing) = sqlx::query(query_str)
+                .bind(acc_id)
+                .fetch_optional(pool)
+                .await? {
+                return Ok(DbGlobalSettings {
+                    id: existing.try_get("id")?,
+                    user_id: existing.try_get("user_id")?,
+                    account_id: existing.try_get("account_id")?,
+                    company_name: existing.try_get("company_name")?,
+                    timezone: existing.try_get("timezone")?,
+                    locale: existing.try_get("locale")?,
+                    logo_url: existing.try_get("logo_url")?,
+                    force_2fa_with_authenticator_app: existing.try_get("force_2fa_with_authenticator_app")?,
+                    add_signature_id_to_the_documents: existing.try_get("add_signature_id_to_the_documents")?,
+                    require_signing_reason: existing.try_get("require_signing_reason")?,
+                    allow_typed_text_signatures: existing.try_get("allow_typed_text_signatures")?,
+                    allow_to_resubmit_completed_forms: existing.try_get("allow_to_resubmit_completed_forms")?,
+                    allow_to_decline_documents: existing.try_get("allow_to_decline_documents")?,
+                    remember_and_pre_fill_signatures: existing.try_get("remember_and_pre_fill_signatures")?,
+                    require_authentication_for_file_download_links: existing.try_get("require_authentication_for_file_download_links")?,
+                    combine_completed_documents_and_audit_log: existing.try_get("combine_completed_documents_and_audit_log")?,
+                    expirable_file_download_links: existing.try_get("expirable_file_download_links")?,
+                    enable_confetti: existing.try_get("enable_confetti")?,
+                    completion_title: existing.try_get("completion_title")?,
+                    completion_body: existing.try_get("completion_body")?,
+                    redirect_title: existing.try_get("redirect_title")?,
+                    redirect_url: existing.try_get("redirect_url")?,
+                    created_at: existing.try_get("created_at")?,
+                    updated_at: existing.try_get("updated_at")?,
+                });
+            }
         } else {
-            "SELECT id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at FROM global_settings WHERE id = 1".to_string()
-        };
-
-        if let Some(existing) = sqlx::query(&query_str)
-            .bind(account_id)
-            .fetch_optional(pool)
-            .await? {
-            return Ok(DbGlobalSettings {
-                id: existing.try_get("id")?,
-                user_id: existing.try_get("user_id")?,
-                account_id: existing.try_get("account_id")?,
-                company_name: existing.try_get("company_name")?,
-                timezone: existing.try_get("timezone")?,
-                locale: existing.try_get("locale")?,
-                logo_url: existing.try_get("logo_url")?,
-                force_2fa_with_authenticator_app: existing.try_get("force_2fa_with_authenticator_app")?,
-                add_signature_id_to_the_documents: existing.try_get("add_signature_id_to_the_documents")?,
-                require_signing_reason: existing.try_get("require_signing_reason")?,
-                allow_typed_text_signatures: existing.try_get("allow_typed_text_signatures")?,
-                allow_to_resubmit_completed_forms: existing.try_get("allow_to_resubmit_completed_forms")?,
-                allow_to_decline_documents: existing.try_get("allow_to_decline_documents")?,
-                remember_and_pre_fill_signatures: existing.try_get("remember_and_pre_fill_signatures")?,
-                require_authentication_for_file_download_links: existing.try_get("require_authentication_for_file_download_links")?,
-                combine_completed_documents_and_audit_log: existing.try_get("combine_completed_documents_and_audit_log")?,
-                expirable_file_download_links: existing.try_get("expirable_file_download_links")?,
-                enable_confetti: existing.try_get("enable_confetti")?,
-                completion_title: existing.try_get("completion_title")?,
-                completion_body: existing.try_get("completion_body")?,
-                redirect_title: existing.try_get("redirect_title")?,
-                redirect_url: existing.try_get("redirect_url")?,
-                created_at: existing.try_get("created_at")?,
-                updated_at: existing.try_get("updated_at")?,
-            });
+            // Check if settings already exist for this user (if no account)
+            let query_str = "SELECT id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at FROM global_settings WHERE user_id = $1";
+            
+            if let Some(existing) = sqlx::query(query_str)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await? {
+                return Ok(DbGlobalSettings {
+                    id: existing.try_get("id")?,
+                    user_id: existing.try_get("user_id")?,
+                    account_id: existing.try_get("account_id")?,
+                    company_name: existing.try_get("company_name")?,
+                    timezone: existing.try_get("timezone")?,
+                    locale: existing.try_get("locale")?,
+                    logo_url: existing.try_get("logo_url")?,
+                    force_2fa_with_authenticator_app: existing.try_get("force_2fa_with_authenticator_app")?,
+                    add_signature_id_to_the_documents: existing.try_get("add_signature_id_to_the_documents")?,
+                    require_signing_reason: existing.try_get("require_signing_reason")?,
+                    allow_typed_text_signatures: existing.try_get("allow_typed_text_signatures")?,
+                    allow_to_resubmit_completed_forms: existing.try_get("allow_to_resubmit_completed_forms")?,
+                    allow_to_decline_documents: existing.try_get("allow_to_decline_documents")?,
+                    remember_and_pre_fill_signatures: existing.try_get("remember_and_pre_fill_signatures")?,
+                    require_authentication_for_file_download_links: existing.try_get("require_authentication_for_file_download_links")?,
+                    combine_completed_documents_and_audit_log: existing.try_get("combine_completed_documents_and_audit_log")?,
+                    expirable_file_download_links: existing.try_get("expirable_file_download_links")?,
+                    enable_confetti: existing.try_get("enable_confetti")?,
+                    completion_title: existing.try_get("completion_title")?,
+                    completion_body: existing.try_get("completion_body")?,
+                    redirect_title: existing.try_get("redirect_title")?,
+                    redirect_url: existing.try_get("redirect_url")?,
+                    created_at: existing.try_get("created_at")?,
+                    updated_at: existing.try_get("updated_at")?,
+                });
+            }
         }
 
+        // Create new settings
         let row = sqlx::query(
             r#"
             INSERT INTO global_settings (user_id, account_id, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, created_at, updated_at)
@@ -2540,42 +2577,110 @@ impl GlobalSettingsQueries {
             None => return Err(sqlx::Error::RowNotFound),
         };
 
-        // First check if settings exist for this account
-        let existing_settings = Self::get_user_settings(pool, user_id).await?;
+        // First check if settings exist for this user_id or account_id
+        let existing_settings = if let Some(acc_id) = account_id {
+            sqlx::query_as::<_, (i32,)>("SELECT id FROM global_settings WHERE account_id = $1")
+                .bind(acc_id)
+                .fetch_optional(pool)
+                .await?
+        } else {
+            // For users without account_id, check by user_id
+            sqlx::query_as::<_, (i32,)>("SELECT id FROM global_settings WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?
+        };
 
         if existing_settings.is_none() {
-            // Create settings for this account
-            let row = sqlx::query(
-                r#"
-                INSERT INTO global_settings (user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $22)
-                RETURNING id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at
-                "#
-            )
-            .bind(user_id)
-            .bind(account_id)
-            .bind(settings.company_name.as_deref())
-            .bind(settings.timezone.as_deref())
-            .bind(settings.locale.as_deref())
-            .bind(settings.logo_url.as_deref())
-            .bind(settings.force_2fa_with_authenticator_app.unwrap_or(false))
-            .bind(settings.add_signature_id_to_the_documents.unwrap_or(false))
-            .bind(settings.require_signing_reason.unwrap_or(false))
-            .bind(settings.allow_typed_text_signatures.unwrap_or(true))
-            .bind(settings.allow_to_resubmit_completed_forms.unwrap_or(false))
-            .bind(settings.allow_to_decline_documents.unwrap_or(false))
-            .bind(settings.remember_and_pre_fill_signatures.unwrap_or(false))
-            .bind(settings.require_authentication_for_file_download_links.unwrap_or(false))
-            .bind(settings.combine_completed_documents_and_audit_log.unwrap_or(false))
-            .bind(settings.expirable_file_download_links.unwrap_or(false))
-            .bind(settings.enable_confetti.unwrap_or(false))
-            .bind(settings.completion_title.as_deref())
-            .bind(settings.completion_body.as_deref())
-            .bind(settings.redirect_title.as_deref())
-            .bind(settings.redirect_url.as_deref())
-            .bind(now)
-            .fetch_one(pool)
-            .await?;
+            // Create settings - for users with account_id, use ON CONFLICT on account_id
+            // For users without account_id, just INSERT (no conflict possible except id)
+            let row = if account_id.is_some() {
+                sqlx::query(
+                    r#"
+                    INSERT INTO global_settings (user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                    ON CONFLICT (account_id) DO UPDATE SET
+                        company_name = COALESCE(EXCLUDED.company_name, global_settings.company_name),
+                        timezone = COALESCE(EXCLUDED.timezone, global_settings.timezone),
+                        locale = COALESCE(EXCLUDED.locale, global_settings.locale),
+                        logo_url = EXCLUDED.logo_url,
+                        force_2fa_with_authenticator_app = COALESCE(EXCLUDED.force_2fa_with_authenticator_app, global_settings.force_2fa_with_authenticator_app),
+                        add_signature_id_to_the_documents = COALESCE(EXCLUDED.add_signature_id_to_the_documents, global_settings.add_signature_id_to_the_documents),
+                        require_signing_reason = COALESCE(EXCLUDED.require_signing_reason, global_settings.require_signing_reason),
+                        allow_typed_text_signatures = COALESCE(EXCLUDED.allow_typed_text_signatures, global_settings.allow_typed_text_signatures),
+                        allow_to_resubmit_completed_forms = COALESCE(EXCLUDED.allow_to_resubmit_completed_forms, global_settings.allow_to_resubmit_completed_forms),
+                        allow_to_decline_documents = COALESCE(EXCLUDED.allow_to_decline_documents, global_settings.allow_to_decline_documents),
+                        remember_and_pre_fill_signatures = COALESCE(EXCLUDED.remember_and_pre_fill_signatures, global_settings.remember_and_pre_fill_signatures),
+                        require_authentication_for_file_download_links = COALESCE(EXCLUDED.require_authentication_for_file_download_links, global_settings.require_authentication_for_file_download_links),
+                        combine_completed_documents_and_audit_log = COALESCE(EXCLUDED.combine_completed_documents_and_audit_log, global_settings.combine_completed_documents_and_audit_log),
+                        expirable_file_download_links = COALESCE(EXCLUDED.expirable_file_download_links, global_settings.expirable_file_download_links),
+                        enable_confetti = COALESCE(EXCLUDED.enable_confetti, global_settings.enable_confetti),
+                        completion_title = COALESCE(EXCLUDED.completion_title, global_settings.completion_title),
+                        completion_body = COALESCE(EXCLUDED.completion_body, global_settings.completion_body),
+                        redirect_title = COALESCE(EXCLUDED.redirect_title, global_settings.redirect_title),
+                        redirect_url = COALESCE(EXCLUDED.redirect_url, global_settings.redirect_url),
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at
+                    "#
+                )
+                .bind(user_id)
+                .bind(account_id)
+                .bind(settings.company_name.as_deref())
+                .bind(settings.timezone.as_deref())
+                .bind(settings.locale.as_deref())
+                .bind(settings.logo_url.as_deref())
+                .bind(settings.force_2fa_with_authenticator_app.unwrap_or(false))
+                .bind(settings.add_signature_id_to_the_documents.unwrap_or(false))
+                .bind(settings.require_signing_reason.unwrap_or(false))
+                .bind(settings.allow_typed_text_signatures.unwrap_or(true))
+                .bind(settings.allow_to_resubmit_completed_forms.unwrap_or(false))
+                .bind(settings.allow_to_decline_documents.unwrap_or(false))
+                .bind(settings.remember_and_pre_fill_signatures.unwrap_or(false))
+                .bind(settings.require_authentication_for_file_download_links.unwrap_or(false))
+                .bind(settings.combine_completed_documents_and_audit_log.unwrap_or(false))
+                .bind(settings.expirable_file_download_links.unwrap_or(false))
+                .bind(settings.enable_confetti.unwrap_or(false))
+                .bind(settings.completion_title.as_deref())
+                .bind(settings.completion_body.as_deref())
+                .bind(settings.redirect_title.as_deref())
+                .bind(settings.redirect_url.as_deref())
+                .bind(now)
+                .fetch_one(pool)
+                .await?
+            } else {
+                // For users without account_id, just INSERT normally
+                sqlx::query(
+                    r#"
+                    INSERT INTO global_settings (user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                    RETURNING id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at
+                    "#
+                )
+                .bind(user_id)
+                .bind(account_id)
+                .bind(settings.company_name.as_deref())
+                .bind(settings.timezone.as_deref())
+                .bind(settings.locale.as_deref())
+                .bind(settings.logo_url.as_deref())
+                .bind(settings.force_2fa_with_authenticator_app.unwrap_or(false))
+                .bind(settings.add_signature_id_to_the_documents.unwrap_or(false))
+                .bind(settings.require_signing_reason.unwrap_or(false))
+                .bind(settings.allow_typed_text_signatures.unwrap_or(true))
+                .bind(settings.allow_to_resubmit_completed_forms.unwrap_or(false))
+                .bind(settings.allow_to_decline_documents.unwrap_or(false))
+                .bind(settings.remember_and_pre_fill_signatures.unwrap_or(false))
+                .bind(settings.require_authentication_for_file_download_links.unwrap_or(false))
+                .bind(settings.combine_completed_documents_and_audit_log.unwrap_or(false))
+                .bind(settings.expirable_file_download_links.unwrap_or(false))
+                .bind(settings.enable_confetti.unwrap_or(false))
+                .bind(settings.completion_title.as_deref())
+                .bind(settings.completion_body.as_deref())
+                .bind(settings.redirect_title.as_deref())
+                .bind(settings.redirect_url.as_deref())
+                .bind(now)
+                .fetch_one(pool)
+                .await?
+            };
 
             return Ok(DbGlobalSettings {
                 id: row.try_get("id")?,
@@ -2605,8 +2710,8 @@ impl GlobalSettingsQueries {
             });
         }
 
-        // Update existing settings by account_id (affects all users in the account)
-        let mut query = sqlx::query(
+        // Update existing settings by account_id (if has account) or user_id (if no account)
+        let update_query = if account_id.is_some() {
             r#"
             UPDATE global_settings
             SET company_name = COALESCE($1, company_name),
@@ -2631,9 +2736,35 @@ impl GlobalSettingsQueries {
                 updated_at = $20
             WHERE account_id = $21
             "#
-        );
+        } else {
+            r#"
+            UPDATE global_settings
+            SET company_name = COALESCE($1, company_name),
+                timezone = COALESCE($2, timezone),
+                locale = COALESCE($3, locale),
+                logo_url = $4,
+                force_2fa_with_authenticator_app = COALESCE($5, force_2fa_with_authenticator_app),
+                add_signature_id_to_the_documents = COALESCE($6, add_signature_id_to_the_documents),
+                require_signing_reason = COALESCE($7, require_signing_reason),
+                allow_typed_text_signatures = COALESCE($8, allow_typed_text_signatures),
+                allow_to_resubmit_completed_forms = COALESCE($9, allow_to_resubmit_completed_forms),
+                allow_to_decline_documents = COALESCE($10, allow_to_decline_documents),
+                remember_and_pre_fill_signatures = COALESCE($11, remember_and_pre_fill_signatures),
+                require_authentication_for_file_download_links = COALESCE($12, require_authentication_for_file_download_links),
+                combine_completed_documents_and_audit_log = COALESCE($13, combine_completed_documents_and_audit_log),
+                expirable_file_download_links = COALESCE($14, expirable_file_download_links),
+                enable_confetti = COALESCE($15, enable_confetti),
+                completion_title = COALESCE($16, completion_title),
+                completion_body = COALESCE($17, completion_body),
+                redirect_title = COALESCE($18, redirect_title),
+                redirect_url = COALESCE($19, redirect_url),
+                updated_at = $20
+            WHERE user_id = $21
+            "#
+        };
         
-        // Bind string options properly
+        let mut query = sqlx::query(update_query);
+        
         query = query.bind(settings.company_name.as_deref());
         query = query.bind(settings.timezone.as_deref());
         query = query.bind(settings.locale.as_deref());
@@ -2654,7 +2785,13 @@ impl GlobalSettingsQueries {
         query = query.bind(settings.redirect_title.as_deref());
         query = query.bind(settings.redirect_url.as_deref());
         query = query.bind(now);
-        query = query.bind(account_id);
+        
+        // Bind WHERE clause condition (account_id or user_id)
+        if let Some(acc_id) = account_id {
+            query = query.bind(acc_id);
+        } else {
+            query = query.bind(user_id);
+        }
         
         query.execute(pool).await?;
 
