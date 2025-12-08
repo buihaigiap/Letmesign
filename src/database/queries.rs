@@ -2577,36 +2577,69 @@ impl GlobalSettingsQueries {
             None => return Err(sqlx::Error::RowNotFound),
         };
 
-        // Try to INSERT with ON CONFLICT to handle race conditions
-        // For users with account_id: ON CONFLICT on account_id constraint
-        // For users without account_id: just INSERT (use auto-increment id)
+        // Try to UPDATE first, then INSERT if not found
         let row = if account_id.is_some() {
-            // Account users: INSERT with ON CONFLICT on account_id
-            sqlx::query(
+            // Account users: try UPDATE first, then INSERT
+            let update_result = sqlx::query(
+                r#"
+                UPDATE global_settings SET
+                    company_name = COALESCE($3, company_name),
+                    timezone = COALESCE($4, timezone),
+                    locale = COALESCE($5, locale),
+                    logo_url = $6,
+                    force_2fa_with_authenticator_app = COALESCE($7, force_2fa_with_authenticator_app),
+                    add_signature_id_to_the_documents = COALESCE($8, add_signature_id_to_the_documents),
+                    require_signing_reason = COALESCE($9, require_signing_reason),
+                    allow_typed_text_signatures = COALESCE($10, allow_typed_text_signatures),
+                    allow_to_resubmit_completed_forms = COALESCE($11, allow_to_resubmit_completed_forms),
+                    allow_to_decline_documents = COALESCE($12, allow_to_decline_documents),
+                    remember_and_pre_fill_signatures = COALESCE($13, remember_and_pre_fill_signatures),
+                    require_authentication_for_file_download_links = COALESCE($14, require_authentication_for_file_download_links),
+                    combine_completed_documents_and_audit_log = COALESCE($15, combine_completed_documents_and_audit_log),
+                    expirable_file_download_links = COALESCE($16, expirable_file_download_links),
+                    enable_confetti = COALESCE($17, enable_confetti),
+                    completion_title = COALESCE($18, completion_title),
+                    completion_body = COALESCE($19, completion_body),
+                    redirect_title = COALESCE($20, redirect_title),
+                    redirect_url = COALESCE($21, redirect_url),
+                    updated_at = $22
+                WHERE account_id = $2
+                RETURNING id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at
+                "#
+            )
+            .bind(user_id)
+            .bind(account_id)
+            .bind(settings.company_name.as_deref())
+            .bind(settings.timezone.as_deref())
+            .bind(settings.locale.as_deref())
+            .bind(settings.logo_url.as_deref())
+            .bind(settings.force_2fa_with_authenticator_app.unwrap_or(false))
+            .bind(settings.add_signature_id_to_the_documents.unwrap_or(false))
+            .bind(settings.require_signing_reason.unwrap_or(false))
+            .bind(settings.allow_typed_text_signatures.unwrap_or(true))
+            .bind(settings.allow_to_resubmit_completed_forms.unwrap_or(false))
+            .bind(settings.allow_to_decline_documents.unwrap_or(false))
+            .bind(settings.remember_and_pre_fill_signatures.unwrap_or(false))
+            .bind(settings.require_authentication_for_file_download_links.unwrap_or(false))
+            .bind(settings.combine_completed_documents_and_audit_log.unwrap_or(false))
+            .bind(settings.expirable_file_download_links.unwrap_or(false))
+            .bind(settings.enable_confetti.unwrap_or(false))
+            .bind(settings.completion_title.as_deref())
+            .bind(settings.completion_body.as_deref())
+            .bind(settings.redirect_title.as_deref())
+            .bind(settings.redirect_url.as_deref())
+            .bind(now)
+            .fetch_optional(pool)
+            .await?;
+
+            if let Some(row) = update_result {
+                row
+            } else {
+                // No existing row found, INSERT new one
+                sqlx::query(
                     r#"
                     INSERT INTO global_settings (user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
-                    ON CONFLICT (account_id) DO UPDATE SET
-                        company_name = COALESCE(EXCLUDED.company_name, global_settings.company_name),
-                        timezone = COALESCE(EXCLUDED.timezone, global_settings.timezone),
-                        locale = COALESCE(EXCLUDED.locale, global_settings.locale),
-                        logo_url = EXCLUDED.logo_url,
-                        force_2fa_with_authenticator_app = COALESCE(EXCLUDED.force_2fa_with_authenticator_app, global_settings.force_2fa_with_authenticator_app),
-                        add_signature_id_to_the_documents = COALESCE(EXCLUDED.add_signature_id_to_the_documents, global_settings.add_signature_id_to_the_documents),
-                        require_signing_reason = COALESCE(EXCLUDED.require_signing_reason, global_settings.require_signing_reason),
-                        allow_typed_text_signatures = COALESCE(EXCLUDED.allow_typed_text_signatures, global_settings.allow_typed_text_signatures),
-                        allow_to_resubmit_completed_forms = COALESCE(EXCLUDED.allow_to_resubmit_completed_forms, global_settings.allow_to_resubmit_completed_forms),
-                        allow_to_decline_documents = COALESCE(EXCLUDED.allow_to_decline_documents, global_settings.allow_to_decline_documents),
-                        remember_and_pre_fill_signatures = COALESCE(EXCLUDED.remember_and_pre_fill_signatures, global_settings.remember_and_pre_fill_signatures),
-                        require_authentication_for_file_download_links = COALESCE(EXCLUDED.require_authentication_for_file_download_links, global_settings.require_authentication_for_file_download_links),
-                        combine_completed_documents_and_audit_log = COALESCE(EXCLUDED.combine_completed_documents_and_audit_log, global_settings.combine_completed_documents_and_audit_log),
-                        expirable_file_download_links = COALESCE(EXCLUDED.expirable_file_download_links, global_settings.expirable_file_download_links),
-                        enable_confetti = COALESCE(EXCLUDED.enable_confetti, global_settings.enable_confetti),
-                        completion_title = COALESCE(EXCLUDED.completion_title, global_settings.completion_title),
-                        completion_body = COALESCE(EXCLUDED.completion_body, global_settings.completion_body),
-                        redirect_title = COALESCE(EXCLUDED.redirect_title, global_settings.redirect_title),
-                        redirect_url = COALESCE(EXCLUDED.redirect_url, global_settings.redirect_url),
-                        updated_at = EXCLUDED.updated_at
                     RETURNING id, user_id, account_id, company_name, timezone, locale, logo_url, force_2fa_with_authenticator_app, add_signature_id_to_the_documents, require_signing_reason, allow_typed_text_signatures, allow_to_resubmit_completed_forms, allow_to_decline_documents, remember_and_pre_fill_signatures, require_authentication_for_file_download_links, combine_completed_documents_and_audit_log, expirable_file_download_links, enable_confetti, completion_title, completion_body, redirect_title, redirect_url, created_at, updated_at
                     "#
                 )
@@ -2632,8 +2665,10 @@ impl GlobalSettingsQueries {
                 .bind(settings.redirect_title.as_deref())
                 .bind(settings.redirect_url.as_deref())
                 .bind(now)
+                .bind(now)
                 .fetch_one(pool)
                 .await?
+            }
             } else {
                 // For users without account_id: try UPDATE first, then INSERT if not found
                 let update_result = sqlx::query(

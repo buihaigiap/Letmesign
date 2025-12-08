@@ -76,9 +76,9 @@ impl ReminderQueue {
             let now = Utc::now();
             let hours_since_created = (now - submitter.created_at).num_hours();
             
-            println!("🔍 Checking submitter {}: reminder_count={}, hours_since_created={}, first={}, second={}, third={}",
-                submitter.id, submitter.reminder_count, hours_since_created,
-                reminder_config.first_reminder_hours, reminder_config.second_reminder_hours, reminder_config.third_reminder_hours);
+            // println!("🔍 Checking submitter {}: reminder_count={}, hours_since_created={}, first={}, second={}, third={}",
+            //     submitter.id, submitter.reminder_count, hours_since_created,
+            //     reminder_config.first_reminder_hours, reminder_config.second_reminder_hours, reminder_config.third_reminder_hours);
             
             // Determine which reminder to send based on time elapsed
             let reminder_to_send = if submitter.reminder_count == 0 {

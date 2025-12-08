@@ -2363,14 +2363,8 @@ pub async fn preview_file(
         let total_pages = match get_pdf_page_count(&pdf_data) {
             Ok(count) => count,
             Err(e) => {
-                eprintln!("Failed to read PDF: {:?}", e);
-                let response = Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(Body::from(serde_json::json!({"error": "Failed to read PDF"}).to_string()))
-                    .unwrap();
-                return response;
+                eprintln!("Failed to read PDF: {:?}, file_key: {}, pdf_data len: {}, falling back to 1 page", e, file_key, pdf_data.len());
+                1 // Fallback to 1 page if PDF parsing fails
             }
         };
         
@@ -2620,8 +2614,10 @@ fn render_pdf_page_to_image(
 /// Helper function to get PDF page count
 fn get_pdf_page_count(pdf_bytes: &[u8]) -> Result<i32, String> {
     use lopdf::Document;
+    eprintln!("PDF first 100 bytes: {:?}", &pdf_bytes[..std::cmp::min(100, pdf_bytes.len())]);
+    eprintln!("PDF last 100 bytes: {:?}", &pdf_bytes[pdf_bytes.len().saturating_sub(100)..]);
     let doc = Document::load_mem(pdf_bytes).map_err(|e| {
-        eprintln!("lopdf load error: {:?}", e);
+        eprintln!("lopdf load error: {:?}, pdf_bytes len: {}", e, pdf_bytes.len());
         e.to_string()
     })?;
     Ok(doc.get_pages().len() as i32)

@@ -86,7 +86,7 @@ impl StorageService {
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-' { c } else { '_' })
             .collect::<String>();
         
-        let key = format!("templates/{}_{}", timestamp, sanitized_filename);
+        let key = sanitized_filename.clone();
 
         if self.storage_type == "local" {
             let path = Path::new(self.local_path.as_ref().unwrap()).join(&key);
