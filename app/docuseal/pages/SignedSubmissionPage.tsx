@@ -99,7 +99,7 @@ const SignedSubmissionPage = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold mb-4">Thông tin chữ ký</h2>
-          </div>            {/* Submitter Info - Display once at top */}
+          </div> 
               <div className="space-y-2">
                 <p className="text-sm font-medium">{data.submitter?.name}</p>
                 {submitterInfo && (
@@ -136,8 +136,8 @@ const SignedSubmissionPage = () => {
                         alt={`Signature ${index + 1}`} 
                         className="max-w-full h-auto border border-gray-600 rounded"
                       />
-                    ) : sig.signature_value.startsWith('[') || sig.signature_value.startsWith('{') ? (
-                      <div className="border border-gray-600 rounded p-2 bg-white">
+                    ) : sig.signature_value.startsWith('[') || sig.signature_value.startsWith('{') || sig.field_info?.field_type === 'signature' ? (
+                      <div className="border border-gray-600 rounded p-2">
                         <SignatureRenderer 
                           data={sig.signature_value} 
                           width={200} 

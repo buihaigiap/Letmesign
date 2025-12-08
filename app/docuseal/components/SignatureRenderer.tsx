@@ -1,6 +1,7 @@
 import { useBasicSettings } from '@/hooks/useBasicSettings';
 import React, { useMemo } from 'react';
 import { hashId } from '../constants/reminderDurations';
+import { API_BASE_URL } from '../config';
 
 interface SignatureRendererProps {
   data: string; // JSON string of point groups or typed text
@@ -27,9 +28,9 @@ const SignatureRenderer: React.FC<SignatureRendererProps> = ({
   reason, globalSettings
 }) => {
   // 1. Parse Data Type
+  console.log('SignatureRenderer data:', data);
   const { type, content, vectorBounds } = useMemo(() => {
     if (!data) return { type: 'EMPTY', content: null };
-
     const trimmedData = data.trim();
     if (trimmedData.startsWith('http') || trimmedData.startsWith('/') || trimmedData.startsWith('blob:') || trimmedData.startsWith('data:')) {
       return { type: 'IMAGE', content: trimmedData };
@@ -142,9 +143,10 @@ const SignatureRenderer: React.FC<SignatureRendererProps> = ({
   // Render Helpers
   const renderContent = () => {
     if (type === 'IMAGE') {
+      const src = (content as string).startsWith('http') || (content as string).startsWith('data:') ? content as string : API_BASE_URL + (content as string);
       return (
         <img
-          src={content as string}
+          src={src}
           alt="Signature"
           style={{
             maxWidth: '100%',

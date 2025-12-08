@@ -2001,7 +2001,7 @@ fn render_text_field(
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
         arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
-        arial_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+        arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
 
@@ -2260,7 +2260,7 @@ fn render_cells_field(
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
         arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
-        arial_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+        arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
 
@@ -2422,7 +2422,7 @@ fn render_initials_field(
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
         arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
-        arial_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+        arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
 
@@ -3419,7 +3419,7 @@ async fn generate_template_audit_log_pdf(
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
         arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
-        arial_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+        arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
 
@@ -3802,7 +3802,7 @@ async fn generate_audit_log_pdf(
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
         arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
-        arial_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+        arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
 

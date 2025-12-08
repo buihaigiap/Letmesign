@@ -2,6 +2,85 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { hashId } from '../constants/reminderDurations';
 import { getPDFPreferences, applyFilenameFormat } from './filenameFormatter';
 
+// Helper function to sanitize text for PDF operations by replacing Unicode characters
+// that cannot be encoded in WinAnsi with ASCII equivalents
+const sanitizeTextForPDF = (text: string): string => {
+  if (!text) return text;
+
+  return text
+    // Vietnamese characters
+    .replace(/ơ/g, 'o')
+    .replace(/ư/g, 'u')
+    .replace(/ă/g, 'a')
+    .replace(/â/g, 'a')
+    .replace(/ê/g, 'e')
+    .replace(/ô/g, 'o')
+    .replace(/ư/g, 'u')
+    .replace(/đ/g, 'd')
+    .replace(/ĩ/g, 'i')
+    .replace(/ũ/g, 'u')
+    .replace(/ễ/g, 'e')
+    .replace(/ẫ/g, 'a')
+    .replace(/ỗ/g, 'o')
+    .replace(/ừ/g, 'u')
+    .replace(/Ở/g, 'O')
+    .replace(/ờ/g, 'o')
+    .replace(/ở/g, 'o')
+    .replace(/ỡ/g, 'o')
+    .replace(/ợ/g, 'o')
+    .replace(/Ư/g, 'U')
+    .replace(/Ứ/g, 'U')
+    .replace(/ứ/g, 'u')
+    .replace(/ừ/g, 'u')
+    .replace(/ử/g, 'u')
+    .replace(/ữ/g, 'u')
+    .replace(/ự/g, 'u')
+    .replace(/Ă/g, 'A')
+    .replace(/Ắ/g, 'A')
+    .replace(/ắ/g, 'a')
+    .replace(/ằ/g, 'a')
+    .replace(/ẳ/g, 'a')
+    .replace(/ẵ/g, 'a')
+    .replace(/ặ/g, 'a')
+    .replace(/Â/g, 'A')
+    .replace(/Ấ/g, 'A')
+    .replace(/ấ/g, 'a')
+    .replace(/ầ/g, 'a')
+    .replace(/ẩ/g, 'a')
+    .replace(/ẫ/g, 'a')
+    .replace(/ậ/g, 'a')
+    .replace(/Ê/g, 'E')
+    .replace(/Ế/g, 'E')
+    .replace(/ế/g, 'e')
+    .replace(/ề/g, 'e')
+    .replace(/ể/g, 'e')
+    .replace(/ễ/g, 'e')
+    .replace(/ệ/g, 'e')
+    .replace(/Ô/g, 'O')
+    .replace(/Ố/g, 'O')
+    .replace(/ố/g, 'o')
+    .replace(/ồ/g, 'o')
+    .replace(/ổ/g, 'o')
+    .replace(/ỗ/g, 'o')
+    .replace(/ộ/g, 'o')
+    .replace(/Ơ/g, 'O')
+    .replace(/Ớ/g, 'O')
+    .replace(/ớ/g, 'o')
+    .replace(/ờ/g, 'o')
+    .replace(/ở/g, 'o')
+    .replace(/ỡ/g, 'o')
+    .replace(/ợ/g, 'o')
+    .replace(/Đ/g, 'D')
+    .replace(/Ĩ/g, 'I')
+    .replace(/Ũ/g, 'U')
+    .replace(/Ễ/g, 'E')
+    .replace(/Ẫ/g, 'A')
+    .replace(/Ỗ/g, 'O')
+    .replace(/Ừ/g, 'U')
+    // Other common Unicode characters that might cause issues
+    .replace(/[^\x00-\x7F]/g, '?'); // Replace any remaining non-ASCII characters with ?
+};
+
 // Interface for audit log entry
 interface AuditLogEntry {
   timestamp: string;
@@ -197,28 +276,28 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
       let textToShow: string[] = [];
       if (globalSettings?.add_signature_id_to_the_documents) {
         if (submitterId) textToShow.push(`ID: ${hashId(submitterId + 1)}`);
-        if (submitterEmail) textToShow.push(submitterEmail);
-        textToShow.push(new Date().toLocaleString('vi-VN', {
+        if (submitterEmail) textToShow.push(sanitizeTextForPDF(submitterEmail));
+        textToShow.push(sanitizeTextForPDF(new Date().toLocaleString('vi-VN', {
           year: 'numeric', month: '2-digit', day: '2-digit',
           hour: '2-digit', minute: '2-digit', second: '2-digit',
           timeZone: 'Asia/Ho_Chi_Minh'
-        }));
+        })));
       } else if (additionalText) {
-        textToShow = [additionalText];
+        textToShow = [sanitizeTextForPDF(additionalText)];
       }
 
       // Always show reason if require_signing_reason is enabled and reason exists
       if (globalSettings?.require_signing_reason && reason) {
         if (globalSettings?.add_signature_id_to_the_documents) {
           // Show both reason and ID/email/date
-          textToShow = [`Reason: ${reason}`, `ID: ${hashId(submitterId + 1)}`, submitterEmail, new Date().toLocaleString('vi-VN', {
+          textToShow = [`Reason: ${sanitizeTextForPDF(reason)}`, `ID: ${hashId(submitterId + 1)}`, sanitizeTextForPDF(submitterEmail), sanitizeTextForPDF(new Date().toLocaleString('vi-VN', {
             year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', second: '2-digit',
             timeZone: 'Asia/Ho_Chi_Minh'
-          })].filter(Boolean);
+          }))].filter(Boolean);
         } else {
           // Show only reason
-          textToShow = [`Reason: ${reason}`];
+          textToShow = [`Reason: ${sanitizeTextForPDF(reason)}`];
         }
       }
 
@@ -340,7 +419,7 @@ export const downloadSignedPDF = async (
     if (field.field_type === 'text' || field.field_type === 'date' || field.field_type === 'number') {
       // Render text
       const fontSize = Math.min(fieldHeight * 0.6, 12);
-      page.drawText(signatureValue, {
+      page.drawText(sanitizeTextForPDF(signatureValue), {
         x: pdfX,
         y: pdfY + fieldHeight * 0.3, // Center vertically
         size: fontSize,
@@ -349,12 +428,24 @@ export const downloadSignedPDF = async (
       });
     } else if (field.field_type === 'signature' || field.field_type === 'initials') {
       // Xử lý chữ ký (có thể là image hoặc drawn signature)
-      if (signatureValue.startsWith('data:image/')) {
+      if (signatureValue.startsWith('data:image/') || signatureValue.startsWith('/api/')) {
         // Chữ ký dạng image - embed vào PDF
         try {
-          const imageBytes = await fetch(signatureValue).then(res => res.arrayBuffer());
+          let imageUrl = signatureValue;
+          // If it's an API URL, construct the full URL
+          if (signatureValue.startsWith('/api/')) {
+            const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
+            imageUrl = `${API_BASE_URL}${signatureValue}`;
+          }
+
+          const imageBytes = await fetch(imageUrl, {
+            headers: {
+              'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : ''
+            }
+          }).then(res => res.arrayBuffer());
+
           let image;
-          if (signatureValue.includes('png')) {
+          if (signatureValue.includes('png') || signatureValue.includes('.png')) {
             image = await pdfDoc.embedPng(imageBytes);
           } else {
             image = await pdfDoc.embedJpg(imageBytes);
@@ -421,7 +512,7 @@ export const downloadSignedPDF = async (
       } else {
         // Plain text signature
         const fontSize = Math.min(fieldHeight * 0.6, 12);
-        page.drawText(signatureValue, {
+        page.drawText(sanitizeTextForPDF(signatureValue), {
           x: pdfX,
           y: pdfY + fieldHeight * 0.3,
           size: fontSize,
@@ -592,7 +683,7 @@ export const generateAuditLogPages = async (
     // Draw company name if available
     let titleY = yPosition - logoHeight / 2 - 9;
     if (globalSettings?.company_name) {
-      const companyText = globalSettings.company_name;
+      const companyText = sanitizeTextForPDF(globalSettings.company_name);
       const companyWidth = boldFont.widthOfTextAtSize(companyText, 16);
       page.drawText(companyText, {
         x: margin + logoWidth + 20, // Position next to logo
@@ -621,14 +712,14 @@ export const generateAuditLogPages = async (
     // No logo, draw company name and title
     let currentY = yPosition;
     if (globalSettings?.company_name) {
-      const companyText = globalSettings.company_name;
+      const companyText = sanitizeTextForPDF(globalSettings.company_name);
       page.drawText(companyText, {
         x: margin,
         y: currentY,
         size: 16,
         font: boldFont,
         color: rgb(0, 0, 0),
-      });
+      }); 
       currentY -= 25;
     }
     
@@ -671,7 +762,7 @@ export const generateAuditLogPages = async (
     }
     
     // Draw timestamp
-    page.drawText(entry.timestamp || 'N/A', {
+    page.drawText(sanitizeTextForPDF(entry.timestamp || 'N/A'), {
       x: margin,
       y: yPosition,
       size: 10,
@@ -681,7 +772,7 @@ export const generateAuditLogPages = async (
     yPosition -= lineHeight;
     
     // Draw action
-    page.drawText(`Action: ${entry.action || 'Unknown'}`, {
+    page.drawText(`Action: ${sanitizeTextForPDF(entry.action || 'Unknown')}`, {
       x: margin + 10,
       y: yPosition,
       size: 9,
@@ -691,7 +782,7 @@ export const generateAuditLogPages = async (
     yPosition -= lineHeight;
     
     // Draw user
-    page.drawText(`User: ${entry.user || 'Unknown'}`, {
+    page.drawText(`User: ${sanitizeTextForPDF(entry.user || 'Unknown')}`, {
       x: margin + 10,
       y: yPosition,
       size: 9,
@@ -702,7 +793,7 @@ export const generateAuditLogPages = async (
     
     // Draw details if available
     if (entry.details) {
-      const detailsText = `Details: ${entry.details}`;
+      const detailsText = `Details: ${sanitizeTextForPDF(entry.details)}`;
       const words = detailsText.split(' ');
       let line = '';
       
@@ -745,13 +836,13 @@ export const generateAuditLogPages = async (
 
     // Draw additional metadata if available
     const metadata: string[] = [];
-    if (entry.ip) metadata.push(`IP: ${entry.ip}`);
-    if (entry.session_id) metadata.push(`Session: ${entry.session_id}`);
-    if (entry.timezone) metadata.push(`Timezone: ${entry.timezone}`);
+    if (entry.ip) metadata.push(`IP: ${sanitizeTextForPDF(entry.ip)}`);
+    if (entry.session_id) metadata.push(`Session: ${sanitizeTextForPDF(entry.session_id)}`);
+    if (entry.timezone) metadata.push(`Timezone: ${sanitizeTextForPDF(entry.timezone)}`);
     if (entry.user_agent) {
       // Truncate user agent if too long
       const ua = entry.user_agent.length > 50 ? entry.user_agent.substring(0, 47) + '...' : entry.user_agent;
-      metadata.push(`User Agent: ${ua}`);
+      metadata.push(`User Agent: ${sanitizeTextForPDF(ua)}`);
     }
 
     if (metadata.length > 0) {
@@ -860,7 +951,7 @@ export const downloadSignedPDFWithAuditLog = async (
     // Render based on field type (same as downloadSignedPDF)
     if (field.field_type === 'text' || field.field_type === 'date' || field.field_type === 'number') {
       const fontSize = Math.min(fieldHeight * 0.6, 12);
-      page.drawText(signatureValue, {
+      page.drawText(sanitizeTextForPDF(signatureValue), {
         x: pdfX,
         y: pdfY + fieldHeight * 0.3,
         size: fontSize,
@@ -868,11 +959,23 @@ export const downloadSignedPDFWithAuditLog = async (
         color: rgb(0, 0, 0),
       });
     } else if (field.field_type === 'signature' || field.field_type === 'initials') {
-      if (signatureValue.startsWith('data:image/')) {
+      if (signatureValue.startsWith('data:image/') || signatureValue.startsWith('/api/')) {
         try {
-          const imageBytes = await fetch(signatureValue).then(res => res.arrayBuffer());
+          let imageUrl = signatureValue;
+          // If it's an API URL, construct the full URL
+          if (signatureValue.startsWith('/api/')) {
+            const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
+            imageUrl = `${API_BASE_URL}${signatureValue}`;
+          }
+
+          const imageBytes = await fetch(imageUrl, {
+            headers: {
+              'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : ''
+            }
+          }).then(res => res.arrayBuffer());
+
           let image;
-          if (signatureValue.includes('png')) {
+          if (signatureValue.includes('png') || signatureValue.includes('.png')) {
             image = await pdfDoc.embedPng(imageBytes);
           } else {
             image = await pdfDoc.embedJpg(imageBytes);
@@ -929,7 +1032,7 @@ export const downloadSignedPDFWithAuditLog = async (
         }
       } else {
         const fontSize = Math.min(fieldHeight * 0.6, 12);
-        page.drawText(signatureValue, {
+        page.drawText(sanitizeTextForPDF(signatureValue), {
           x: pdfX,
           y: pdfY + fieldHeight * 0.3,
           size: fontSize,

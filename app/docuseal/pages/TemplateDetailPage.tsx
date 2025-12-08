@@ -10,6 +10,7 @@ import { useTheme } from '@mui/material/styles';
 import { Trash2 , Copy } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
+import { sanitizeTextForPDF } from '../services/pdfDownloadService';
 const TemplateDetailPage = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -192,11 +193,23 @@ const TemplateDetailPage = () => {
           const y = height - field.position.y - field.position.height;
 
           // Draw signature
-          if (signature.signature_value.startsWith('data:image/')) {
+          if (signature.signature_value.startsWith('data:image/') || signature.signature_value.startsWith('/api/')) {
             // It's an image signature
             try {
-              const imageBytes = await fetch(signature.signature_value).then(res => res.arrayBuffer());
-              const image = signature.signature_value.includes('png') 
+              let imageUrl = signature.signature_value;
+              // If it's an API URL, construct the full URL
+              if (signature.signature_value.startsWith('/api/')) {
+                const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
+                imageUrl = `${API_BASE_URL}${signature.signature_value}`;
+              }
+
+              const imageBytes = await fetch(imageUrl, {
+                headers: {
+                  'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : ''
+                }
+              }).then(res => res.arrayBuffer());
+
+              const image = signature.signature_value.includes('png') || signature.signature_value.includes('.png')
                 ? await pdfDoc.embedPng(imageBytes)
                 : await pdfDoc.embedJpg(imageBytes);
 
@@ -279,7 +292,7 @@ const TemplateDetailPage = () => {
               ? atob(signature.signature_value.split(',')[1])
               : signature.signature_value;
 
-            page.drawText(text, {
+            page.drawText(sanitizeTextForPDF(text), {
               x,
               y: y + field.position.height / 2,
               size: 12,

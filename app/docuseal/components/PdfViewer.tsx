@@ -153,7 +153,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     alt={fieldType === 'image' ? "Uploaded image" : "Signature"} 
                     className="object-contain mx-auto w-full h-full"
                   />
-                ) : displayValue.startsWith('[') || displayValue.startsWith('{') ? (
+                ) : displayValue.startsWith('[') || displayValue.startsWith('{') || fieldType === 'signature' ? (
                   <SignatureRenderer 
                     data={displayValue} 
                     width={normalizedPos.width * 600} 
