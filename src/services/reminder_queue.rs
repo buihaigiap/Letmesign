@@ -7,13 +7,7 @@ use crate::database::connection::DbPool;
 use crate::database::queries::{SubmitterQueries, EmailTemplateQueries};
 use crate::services::email::EmailService;
 
-fn replace_template_variables(content: &str, variables: &std::collections::HashMap<&str, &str>) -> String {
-    let mut result = content.to_string();
-    for (key, value) in variables {
-        result = result.replace(&format!("{{{}}}", key), value);
-    }
-    result
-}
+use crate::common::utils::replace_template_variables;
 
 #[derive(Clone)]
 pub struct ReminderQueue {

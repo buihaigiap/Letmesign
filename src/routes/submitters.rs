@@ -21,13 +21,7 @@ use sqlx::PgPool;
 
 use crate::routes::web::AppState;
 
-fn replace_template_variables(content: &str, variables: &std::collections::HashMap<&str, &str>) -> String {
-    let mut result = content.to_string();
-    for (key, value) in variables {
-        result = result.replace(&format!("{{{}}}", key), value);
-    }
-    result
-}
+use crate::common::utils::replace_template_variables;
 
 #[utoipa::path(
     get,

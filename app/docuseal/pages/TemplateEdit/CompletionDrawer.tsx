@@ -1,5 +1,5 @@
 import React from 'react';
-import {Drawer,Box,Typography,Button} from '@mui/material';
+import {Drawer,Box,Typography,Button , Link} from '@mui/material';
 import { Download as DownloadIcon, Email as EmailIcon } from '@mui/icons-material';
 import CreateTemplateButton from '@/components/CreateTemplateButton';
 import { downloadSignedPDF } from '../../services/pdfDownloadService';
@@ -153,9 +153,18 @@ const CompletionDrawer: React.FC<CompletionDrawerProps> = ({
           />
         )}
 
-        <Typography variant="body1" sx={{ color: 'white', lineHeight: 1.6 }}>
-          Powered by <a href="/" target="_blank" className="underline-link">LetMesign</a> - open source documents software
-        </Typography>
+     <Typography variant="body1" sx={{ color: "white", lineHeight: 1.6 }}>
+        Powered by{" "}
+        <Link
+          href="/"
+          target="_blank"
+          color="inherit"
+        >
+          LetMesign
+        </Link>{" "}
+        - open source documents software
+      </Typography>
+
       </Box>
     </Drawer>
   );
