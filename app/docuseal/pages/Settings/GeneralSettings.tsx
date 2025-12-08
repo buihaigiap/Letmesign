@@ -43,9 +43,9 @@ const GeneralSettings = () => {
       </Typography>
 
       <BasicInformation
-        initialCompanyName={globalSettings?.company_name }
-        initialTimezone={globalSettings?.timezone }
-        initialLocale={globalSettings?.locale }
+        initialCompanyName={globalSettings?.company_name}
+        initialTimezone={globalSettings?.timezone}
+        initialLocale={globalSettings?.locale}
       />
 
       <PreferencesSection
