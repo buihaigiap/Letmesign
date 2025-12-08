@@ -15,7 +15,7 @@ const TemplateDetailPage = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { token  , user} = useAuth();
+  const { token  , user, refreshUser   } = useAuth();
   const [templateInfo, setTemplateInfo] = useState<TemplateFullInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -133,6 +133,7 @@ const TemplateDetailPage = () => {
       if (data.success) {
         toast.success(t('templates.detail.success.submissionCreated'));
         fetchTemplateInfo();
+        refreshUser(); // Refresh user data to update usage counts
         setPartnerEmails(Object.fromEntries(Object.keys(partnerEmails).map(p => [p, ''])));
         setShowInviteModal(false);
       }

@@ -50,6 +50,17 @@ const PartnersPanel: React.FC<PartnersPanelProps> = ({
 
   return (
     <div className="relative overflow-visible partners-dropdown">
+      <style>
+        {`
+          .scrollbar-hide {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+          }
+          .scrollbar-hide::-webkit-scrollbar {
+            display: none;  /* Chrome, Safari and Opera */
+          }
+        `}
+      </style>
       <div>
         <h3 className="text-xl font-semibold mb-4 text-white">Current Partner</h3>
         <TextField
@@ -110,7 +121,7 @@ const PartnersPanel: React.FC<PartnersPanelProps> = ({
           }}
         />
         {showList && (
-          <div className="absolute top-full left-0 w-full bg-white rounded mt-1 z-50 max-h-60 overflow-y-auto">
+          <div className="absolute top-full left-0 w-full bg-white rounded mt-1 z-50 max-h-60 overflow-y-auto scrollbar-hide">
             <div className="space-y-2 p-2">
               {partners.filter(p => p).map((partner, index) => (
                 <div
