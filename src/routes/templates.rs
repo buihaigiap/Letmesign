@@ -146,6 +146,7 @@ pub async fn get_template_full_info(
                             reminder_count: db_sub.reminder_count,
                             created_at: db_sub.created_at,
                             updated_at: db_sub.updated_at,
+                            session_id: db_sub.session_id,
                             template_name: None,
                             decline_reason: db_sub.decline_reason,
                             can_download: None,
@@ -153,21 +154,20 @@ pub async fn get_template_full_info(
                         }
                     }).collect::<Vec<_>>();
 
-                    // Group submitters by creation time proximity (within 1 minute)
-                    let mut time_groups: HashMap<String, Vec<crate::models::submitter::Submitter>> = HashMap::new();
+                    // Group submitters by session_id (same submission)
+                    let mut session_groups: HashMap<String, Vec<crate::models::submitter::Submitter>> = HashMap::new();
 
                     for submitter in submitters {
-                        // Group by minute timestamp (floor to nearest minute)
-                        let timestamp = submitter.created_at.timestamp();
-                        let minute_key = (timestamp / 60).to_string(); // Group by minute
-                        time_groups.entry(minute_key).or_insert_with(Vec::new).push(submitter);
+                        // Group by session_id (all submitters in same submission have same session_id)
+                        let session_key = submitter.session_id.clone().unwrap_or_else(|| "unknown".to_string());
+                        session_groups.entry(session_key).or_insert_with(Vec::new).push(submitter);
                     }
 
                     // Build signatures array
                     let mut signatures = Vec::new();
 
                     // Add signature groups
-                    for (_key, parties) in time_groups {
+                    for (_key, parties) in session_groups {
                         let sig_type = if parties.len() > 1 { "bulk" } else { "single" };
 
                         let overall_status = if parties.iter().all(|s| s.status == "declined") {

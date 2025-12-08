@@ -1295,8 +1295,8 @@ impl SubmitterQueries {
         eprintln!("Creating submitter: template_id={}, user_id={}, name={}, email={}, token={}",
             submitter_data.template_id, submitter_data.user_id, submitter_data.name, submitter_data.email, submitter_data.token);
         let row = sqlx::query(
-            "INSERT INTO submitters (template_id, user_id, name, email, status, signed_at, token, bulk_signatures, ip_address, user_agent, reminder_config, reminder_count, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            "INSERT INTO submitters (template_id, user_id, name, email, status, signed_at, token, bulk_signatures, ip_address, user_agent, session_id, reminder_config, reminder_count, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
              RETURNING id, template_id, user_id, name, email, status, signed_at, token, bulk_signatures, ip_address, user_agent, reminder_config, last_reminder_sent_at, reminder_count, created_at, updated_at, decline_reason, session_id, viewed_at, timezone"
         )
         .bind(submitter_data.template_id)
@@ -1309,6 +1309,7 @@ impl SubmitterQueries {
         .bind(None as Option<serde_json::Value>) // bulk_signatures
         .bind(None as Option<String>) // ip_address
         .bind(None as Option<String>) // user_agent
+        .bind(submitter_data.session_id) // session_id
         .bind(submitter_data.reminder_config) // reminder_config
         .bind(0) // reminder_count
         .bind(now)
@@ -1511,20 +1512,18 @@ impl SubmitterQueries {
         bulk_signatures: &serde_json::Value,
         ip_address: Option<&str>,
         user_agent: Option<&str>,
-        session_id: Option<&str>,
         timezone: Option<&str>,
     ) -> Result<Option<DbSubmitter>, sqlx::Error> {
         let now = Utc::now();
 
         let row = sqlx::query(
-            "UPDATE submitters SET bulk_signatures = $1, ip_address = $2, user_agent = $3, session_id = $4, timezone = $5, status = 'signed', signed_at = $6, updated_at = $6 
-             WHERE id = $7 
+            "UPDATE submitters SET bulk_signatures = $1, ip_address = $2, user_agent = $3, timezone = $4, status = 'signed', signed_at = $5, updated_at = $5 
+             WHERE id = $6 
              RETURNING id, template_id, user_id, name, email, status, signed_at, token, bulk_signatures, ip_address, user_agent, reminder_config, last_reminder_sent_at, reminder_count, created_at, updated_at, decline_reason, session_id, viewed_at, timezone"
         )
         .bind(bulk_signatures)
         .bind(ip_address)
         .bind(user_agent)
-        .bind(session_id)
         .bind(timezone)
         .bind(now)
         .bind(id)
@@ -1567,21 +1566,19 @@ impl SubmitterQueries {
         bulk_signatures: &serde_json::Value,
         ip_address: Option<&str>,
         user_agent: Option<&str>,
-        session_id: Option<&str>,
         timezone: Option<&str>,
     ) -> Result<Option<DbSubmitter>, sqlx::Error> {
         let now = Utc::now();
 
         let row = sqlx::query(
-            "UPDATE submitters SET status = 'declined', decline_reason = $1, bulk_signatures = $2, ip_address = $3, user_agent = $4, session_id = $5, timezone = $6, updated_at = $7 
-             WHERE id = $8 
+            "UPDATE submitters SET status = 'declined', decline_reason = $1, bulk_signatures = $2, ip_address = $3, user_agent = $4, timezone = $5, updated_at = $6 
+             WHERE id = $7 
              RETURNING id, template_id, user_id, name, email, status, signed_at, token, bulk_signatures, ip_address, user_agent, reminder_config, last_reminder_sent_at, reminder_count, created_at, updated_at, decline_reason, session_id, viewed_at, timezone"
         )
         .bind(decline_reason)
         .bind(bulk_signatures)
         .bind(ip_address)
         .bind(user_agent)
-        .bind(session_id)
         .bind(timezone)
         .bind(now)
         .bind(id)

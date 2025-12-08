@@ -46,6 +46,15 @@ pub async fn create_submission(
     Json(payload): Json<CreateSubmissionRequest>,
 ) -> (StatusCode, Json<ApiResponse<Submission>>) {
 
+    // Check for duplicate emails in the submission
+    let emails: std::collections::HashSet<_> = payload.submitters.iter().map(|s| &s.email).collect();
+    if emails.len() != payload.submitters.len() {
+        return ApiResponse::bad_request("Duplicate emails in submission".to_string());
+    }
+
+    // Generate a unique session_id for this submission
+    let submission_session_id = generate_token();
+
     let pool = &state.lock().await.db_pool;
 
     // Check if user can submit (usage limit check)
@@ -129,6 +138,7 @@ pub async fn create_submission(
                     status: "pending".to_string(),
                     token: token.clone(),
                     reminder_config: reminder_config_json,
+                    session_id: Some(submission_session_id.clone()),
                 };
 
                 match SubmitterQueries::create_submitter(pool, create_submitter).await {
@@ -151,6 +161,7 @@ pub async fn create_submission(
                             reminder_count: db_submitter.reminder_count,
                             created_at: db_submitter.created_at,
                             updated_at: db_submitter.updated_at,
+                            session_id: db_submitter.session_id,
                             template_name: None,
                             decline_reason: db_submitter.decline_reason,
                             can_download: None,

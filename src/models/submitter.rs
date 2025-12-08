@@ -50,6 +50,8 @@ pub struct Submitter {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decline_reason: Option<String>,

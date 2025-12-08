@@ -323,7 +323,6 @@ const TemplateEditPage = () => {
       const data = await upstashService.bulkSign(token, {
         signatures,
         user_agent: navigator.userAgent,
-        session_id: sessionId,
         timezone: timezone
       });
       if (data.success) {
@@ -402,7 +401,6 @@ const TemplateEditPage = () => {
         action: 'decline',
         decline_reason: declineReason.trim(),
         user_agent: navigator.userAgent,
-        session_id: sessionId,
         timezone: timezone
       });
 

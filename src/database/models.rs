@@ -265,6 +265,7 @@ pub struct CreateSubmitter {
     pub status: String,
     pub token: String,
     pub reminder_config: Option<serde_json::Value>,
+    pub session_id: Option<String>,
 }
 
 // Database-specific signature data model

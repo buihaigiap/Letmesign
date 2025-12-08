@@ -117,7 +117,6 @@ const SignPage = () => {
       const data = await upstashService.bulkSign(signingToken, { 
         signatures: signaturePayload, 
         user_agent: navigator.userAgent,
-        session_id: sessionId,
         timezone: timezone
       });
       if(data.success) {
