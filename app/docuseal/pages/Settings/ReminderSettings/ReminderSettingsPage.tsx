@@ -18,21 +18,49 @@ export default function ReminderSettingsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [emailError, setEmailError] = useState('');
 
   useEffect(() => {
     fetchSettings();
   }, []);
 
+  const validateGmail = (email: string) => {
+    if (!email) {
+      setEmailError('');
+      return true;
+    }
+    
+    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+    if (!gmailRegex.test(email)) {
+      setEmailError('Please enter a valid Gmail address (example@gmail.com)');
+      return false;
+    }
+    
+    setEmailError('');
+    return true;
+  };
+
   const fetchSettings = async () => {
     try {
       const res = await upstashService.getReminderSettings();
-      if (res.success) setSettings(res.data);
+      if (res.success) {
+        setSettings(res.data);
+        // Validate existing email on load
+        if (res.data.completion_notification_email) {
+          validateGmail(res.data.completion_notification_email);
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleSave = async () => {
+    // Validate Gmail format before saving
+    if (settings.completion_notification_email && !validateGmail(settings.completion_notification_email)) {
+      return; // Don't save if email is invalid
+    }
+    
     setSaving(true);
     try {
       await upstashService.updateReminderSettings({
@@ -58,10 +86,16 @@ export default function ReminderSettingsPage() {
     };
 
   const handleTextChange = (field: string) => (event: any) => {
+    const value = event.target.value;
     setSettings({
       ...settings,
-      [field]: event.target.value,
+      [field]: value,
     });
+    
+    // Validate Gmail format for completion notification email
+    if (field === 'completion_notification_email') {
+      validateGmail(value);
+    }
   };
 
   const handleSwitchChange = (field: string) => (event: any) => {
@@ -156,6 +190,8 @@ export default function ReminderSettingsPage() {
             onChange={handleTextChange('completion_notification_email')}
             placeholder="Enter email address for completion notifications"
             type="email"
+            error={!!emailError}
+            helperText={emailError}
             // disabled={!settings.receive_notification_on_completion}
             sx={{ mb: 1 }}
           />
@@ -183,7 +219,7 @@ export default function ReminderSettingsPage() {
             </Button> */}
           <CreateTemplateButton
             onClick={handleSave}
-            disabled={saving }
+            disabled={saving || !!emailError}
             loading={saving}
             text= {saving ? 'Saving...' : 'Save Configuration'}
           />
