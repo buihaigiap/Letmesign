@@ -17,7 +17,6 @@ import upstashService from '../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 import { canTemplate } from '@/hooks/useRoleAccess';
 import Pagination from '../../components/Pagination';
-import { usePagination } from '../../hooks/usePagination';
 interface TemplatesGridProps {
   templates: any;
   onRefresh: () => void;
@@ -35,13 +34,16 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
   const [newFolderName, setNewFolderName] = useState('');
   const hasAccess = useRoleAccess(['agent']);
 
+  const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
-  const { currentPage, setCurrentPage, totalPages, currentItems } = usePagination({
-    items: templates,
-    itemsPerPage
-  });
-  console.log('TemplatesGrid Rendered with templates:', templates);
-  
+  const totalPages = Math.ceil(templates.length / itemsPerPage);
+  const currentItems = templates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages || 1);
+    }
+  }, [currentPage, totalPages]);
   useEffect(() => {
     if (showMoveModal) {
       const fetchFolders = async () => {

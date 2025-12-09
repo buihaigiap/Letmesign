@@ -54,9 +54,6 @@ impl ReminderQueue {
         if submitters.is_empty() {
             return Ok(());
         }
-
-        println!("📧 Found {} submitters to check for reminders", submitters.len());
-        
         for submitter in submitters {
             // Parse reminder config
             let reminder_config = match submitter.reminder_config.as_ref() {

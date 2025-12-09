@@ -64,7 +64,12 @@ const FoldersList: React.FC<FoldersListProps> = ({ folders, title = "Folders" })
           >
             <div style={{
               fontSize: '1rem',
-              fontWeight: '500'
+              fontWeight: '500',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
             }}>
               📁 {folder.name}
             </div>

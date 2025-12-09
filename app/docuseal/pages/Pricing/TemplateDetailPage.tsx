@@ -11,6 +11,8 @@ import toast from 'react-hot-toast';
 import { canTemplate, useRoleAccess } from '../../hooks/useRoleAccess';
 import SigningStatus from './TemplateDetailComponents/SigningStatus';
 import { useTranslation } from 'react-i18next';
+import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
+import CreateTemplateButton from '../../components/CreateTemplateButton';
 const TemplateDetailPage = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -204,14 +206,20 @@ const TemplateDetailPage = () => {
 
   return (
     <Box>
-      <Box >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Typography
-            variant={isMobile ? "h5" : "h3"} component="h1" gutterBottom
-            sx={{ flex: '0 0 auto', textAlign: 'left', minWidth: 0, mr: 2 }}>
-            {t('templates.detail.title')}: {templateInfo?.template.name}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', flex: '1 1 auto', minWidth: 0, justifyContent: 'flex-end' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: '0 0 50%' }}>
+            <CreateTemplateButton
+              onClick={() => navigate(-1)}
+              text="Back"
+              icon={<ArrowBackIcon />}
+            />
+            <Typography
+              variant={isMobile ? "h5" : "h3"} component="h1" gutterBottom
+              sx={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '900px' , margin:0 }}>
+              {t('templates.detail.title')}: {templateInfo?.template.name}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, flexDirection: 'row', flexWrap: 'nowrap', marginLeft: 'auto', justifyContent: 'flex-end' }}>
             <Button variant="contained" onClick={() => navigate(`/templates/${id}/editor`)} size="small">
                {!checkRole || hasAccess ? t('templates.detail.viewTemplate') : t('templates.detail.editTemplate')}
             </Button>
@@ -254,7 +262,6 @@ const TemplateDetailPage = () => {
              )}
           </Box>
         </Box>
-      </Box>
 
       {loading && <CircularProgress />}
       {error && <Alert severity="error">{error}</Alert>}

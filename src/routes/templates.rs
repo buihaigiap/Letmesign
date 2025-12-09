@@ -67,6 +67,7 @@ use crate::models::template::{
     TemplateFolder, CreateFolderRequest, UpdateFolderRequest,
     CreateTemplateFromGoogleDriveRequest
 };
+use rand::Rng;
 use crate::database::connection::DbPool;
 use crate::database::models::{CreateTemplate, CreateTemplateField, CreateTemplateFolder};
 use crate::database::queries::{TemplateQueries, TemplateFolderQueries, TemplateFieldQueries};
@@ -511,12 +512,12 @@ pub async fn create_folder(
                         // Determine the name to use for updating
                         let template_name_holder;
                         let update_name = if let Some(name) = &payload.name {
-                            Some(name.as_str())
+                            Some(if name.len() > 255 { &name[..255] } else { name.as_str() })
                         } else if let Some(template_id) = payload.template_id {
                             // Get template name when name is not provided
                             match TemplateQueries::get_template_by_id(pool, template_id).await {
                                 Ok(Some(template)) if template.user_id == user_id => {
-                                    template_name_holder = template.name;
+                                    template_name_holder = if template.name.len() > 255 { template.name[..255].to_string() } else { template.name };
                                     Some(template_name_holder.as_str())
                                 }
                                 Ok(Some(_)) => return ApiResponse::forbidden("Access denied to template".to_string()),
@@ -584,6 +585,9 @@ pub async fn create_folder(
     } else {
         return ApiResponse::bad_request("Either name or template_id must be provided".to_string());
     };
+
+    // Truncate folder name to 255 characters to fit VARCHAR(255)
+    let folder_name = if folder_name.len() > 255 { folder_name[..255].to_string() } else { folder_name };
 
     // Get user's account_id
     let account_id = match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
@@ -744,7 +748,7 @@ pub async fn update_folder(
             match TemplateFolderQueries::update_folder(
                 pool, 
                 id, 
-                payload.name.as_deref(),
+                payload.name.as_ref().map(|n| if n.len() > 255 { &n[..255] } else { n }).as_deref(),
                 None
             ).await {
                 Ok(Some(db_folder)) => {
@@ -1258,10 +1262,28 @@ pub async fn clone_template(
             }
 
             // Generate new name: original name + " (Clone)"
-            let new_name = format!("{} (Clone)", original_template.name);
+            let base_name = &original_template.name;
+            let clone_suffix = " (Clone)";
+            let max_base_length = 255 - clone_suffix.len();
+            let truncated_base = if base_name.len() > max_base_length {
+                &base_name[..max_base_length]
+            } else {
+                base_name
+            };
+            let new_name = format!("{}{}", truncated_base, clone_suffix);
             
             // Generate a unique slug for the cloned template
-            let slug = format!("{}-clone-{}", new_name.to_lowercase().replace(" ", "-").replace("(", "").replace(")", ""), chrono::Utc::now().timestamp());
+            let slug_base = new_name.to_lowercase().replace(" ", "-").replace("(", "").replace(")", "").replace(".", "-");
+            let timestamp = chrono::Utc::now().timestamp();
+            let random_num: u32 = rand::thread_rng().gen_range(1000..9999);
+            let slug_suffix = format!("-clone-{}-{}", timestamp, random_num);
+            let max_slug_base_length = 255 - slug_suffix.len();
+            let truncated_slug_base = if slug_base.len() > max_slug_base_length {
+                &slug_base[..max_slug_base_length]
+            } else {
+                &slug_base
+            };
+            let slug = format!("{}{}", truncated_slug_base, slug_suffix);
 
             match TemplateQueries::clone_template(pool, id, user_id, &new_name, &slug).await {
                 Ok(Some(db_template)) => {

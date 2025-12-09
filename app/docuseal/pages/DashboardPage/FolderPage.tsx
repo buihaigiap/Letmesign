@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import upstashService from '../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
@@ -37,6 +37,7 @@ const FolderPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState('');
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   
   const findFolderById = (folders: Folder[], id: number): Folder | null => {
@@ -134,6 +135,13 @@ const FolderPage: React.FC = () => {
     }
   }, [folderId]);
 
+  useEffect(() => {
+    if (inputRef.current && isEditing) {
+      inputRef.current.style.width = 'auto';
+      inputRef.current.style.width = inputRef.current.scrollWidth + 'px';
+    }
+  }, [newName, isEditing]);
+
   return (
 <Box >
       {/* Back Button */}
@@ -161,28 +169,29 @@ const FolderPage: React.FC = () => {
           padding: '1rem',
           borderRadius: '8px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' , maxWidth:"85%"}}>
             {isEditing ? (
               <>
                 <TextField
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   size="small"
-                  sx={{ input: { color: 'white' } }}
+                  inputRef={inputRef}
+                  sx={{width: 'auto', input: { color: 'white' } }}
                 />
-                <Button onClick={handleEditSave} size="small" variant="contained">Save</Button>
-                <Button onClick={handleEditCancel} size="small" sx={{ color: 'white' }}>Cancel</Button>
+                <Button onClick={handleEditSave} variant="contained">Save</Button>
+                <Button onClick={handleEditCancel}  sx={{ color: 'white' }}>Cancel</Button>
               </>
             ) : (
               <>
-                <h1 style={{ color: 'white', margin: 0 }}>{currentFolder.name}</h1>
-                <Pencil onClick={handleEditStart} size={15} className='cursor-pointer'/>
-                <Trash2 onClick={handleDeleteFolder} size={15} className='cursor-pointer text-red-400 hover:text-red-300'/>
+                <h1 style={{ color: 'white', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{currentFolder.name}</h1>
+                <Pencil onClick={handleEditStart} size={20} className='cursor-pointer'/>
+                <Trash2 onClick={handleDeleteFolder} size={20} className='cursor-pointer text-red-400 hover:text-red-300'/>
               </>
             )}
           </div>
           <div style={{ display: 'flex', gap: '1rem' }}>
-            <CreateTemplateButton onClick={() => setShowNewTemplateModal(true)} text="Create New Template" />
+            <CreateTemplateButton width='200px' onClick={() => setShowNewTemplateModal(true)} text="Create New Template" />
           </div>
         </div>
       )}

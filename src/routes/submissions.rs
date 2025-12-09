@@ -60,7 +60,7 @@ pub async fn create_submission(
     // Check if user can submit (usage limit check)
     match can_user_submit(pool, user_id).await {
         Ok(false) => {
-            return ApiResponse::forbidden("Bạn đã hết lượt gửi email miễn phí (10 email). Vui lòng nâng cấp lên gói Premium để tiếp tục gửi tài liệu.".to_string());
+            return ApiResponse::forbidden("You have reached the free email sending limit (10 emails). Please upgrade to the Premium plan to continue sending documents.".to_string());
         },
         Err(e) => {
             return ApiResponse::internal_error(format!("Failed to check usage limits: {}", e));

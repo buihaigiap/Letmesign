@@ -177,21 +177,14 @@ const TemplateEditorPage = () => {
           flexWrap: 'wrap',
           gap: 2
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2,   width:"85%"}}>
             <CreateTemplateButton
               onClick={handleBack}
               text="Back"
               icon={<ArrowBackIcon />}
               width="100px"
             />
-            {/* <Button
-              startIcon={<ArrowBackIcon />}
-              onClick={handleBack}
-              variant="outlined"
-            >
-              Back
-            </Button> */}
-            <Typography variant="h5" component="h1" fontWeight="600">
+            <Typography variant="h5" component="h1" fontWeight="600" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               Editing: {template.name}
             </Typography>
           </Box>
