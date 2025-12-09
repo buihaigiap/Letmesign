@@ -17,6 +17,26 @@ import SettingsPage from './pages/Settings/SettingsPage';
 import { Toaster } from "react-hot-toast";
 import ActivatePage from './pages/Settings/Activate/ActivatePage';
 import './src/i18n';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+// Global component to handle Google Drive OAuth redirect
+const GoogleDriveOAuthHandler: React.FC = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('google_drive_connected') === '1') {
+      // Just ensure we're on the dashboard, don't remove the parameter
+      // The EmptyState component will handle the parameter and auto-open the modal
+      if (window.location.pathname !== '/') {
+        navigate('/?google_drive_connected=1', { replace: true });
+      }
+    }
+  }, [navigate]);
+
+  return null;
+};
 
 // Fix: Replaced the old PrivateRoute component with a new layout route component.
 // This uses `<Outlet />` to render child routes if the user is authenticated, resolving the errors.
@@ -43,6 +63,7 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Layout>
+          <GoogleDriveOAuthHandler />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -54,7 +75,6 @@ function App() {
             <Route path="/activate" element={<ActivatePage />} />
             <Route path="/templates/:token/edit" element={<TemplateEditPage />} />
             
-            {/* Fix: Grouped all private routes under the `PrivateRoutes` layout component. */}
             <Route element={<PrivateRoutes />}>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/folders/:folderId" element={<FolderPage />} />

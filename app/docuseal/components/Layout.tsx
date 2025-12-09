@@ -67,10 +67,13 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                             </div>
                             </div>
                         )}
-                        <CreateTemplateButton
-                            text={t('common.upgrade')}
-                            onClick={() => navigate('/pricing')}
-                        />
+                        {user?.subscription_status === "free" && (
+                            <CreateTemplateButton
+                                text={t('common.upgrade')}
+                                onClick={() => navigate('/pricing')}
+                            />
+                        )}
+                      
                         {/* <Link to="/pricing" className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90 transition-opacity">UPRGADE</Link> */}
                         <Avatar onClick={handleMenuOpen} sx={{ cursor: 'pointer', bgcolor: 'purple.500' }}>{user?.name?.charAt(0).toUpperCase()}</Avatar>
                     </>

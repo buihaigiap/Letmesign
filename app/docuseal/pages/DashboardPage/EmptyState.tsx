@@ -84,7 +84,7 @@ const EmptyState = () => {
             text={t('dashboard.emptyState.googleDriveButton')}
             onClick={() => setShowGoogleDrivePicker(true)}
             icon={<FolderOpenIcon />}
-          /> 
+          />
         </Box>
       </Box>
 

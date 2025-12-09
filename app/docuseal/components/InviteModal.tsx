@@ -5,13 +5,13 @@ import { useNavigate } from 'react-router-dom';
 import CreateTemplateButton from './CreateTemplateButton';
 
 interface InviteModalProps {
-  open: boolean;
-  onClose: () => void;
-  partnerEmails: Record<string, string>;
-  onPartnerEmailsChange: (emails: Record<string, string>) => void;
-  onSubmit: (e: React.FormEvent) => void;
+  open?: boolean;
+  onClose?: () => void;
+  partnerEmails?: Record<string, string>;
+  onPartnerEmailsChange?: (emails: Record<string, string>) => void;
+  onSubmit?: (e: React.FormEvent) => void;
   loading?: boolean;
-  id: string;
+  id?: string;
 }
 
 const InviteModal: React.FC<InviteModalProps> = ({

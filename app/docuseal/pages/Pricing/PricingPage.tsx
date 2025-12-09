@@ -19,7 +19,6 @@ const PricingPage: React.FC = () => {
     if (plan.id === 'pro' && price !== undefined && period) {
       setModalState({ isOpen: true, plan, price, period });
       setError('');
-      navigate('/');
     }
   };
 

@@ -29,13 +29,6 @@ const DashboardPage = () => {
   const { token, user, refreshUser } = useAuth();
   // Check if we just returned from Google OAuth
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('google_drive_connected') === '1') {
-      // Remove the query parameter
-      window.history.replaceState({}, '', window.location.pathname);
-      toast.success('Google Drive connected successfully!');
-    }
-
     // Check for redirect after login
     const redirectUrl = localStorage.getItem('redirectAfterLogin');
     if (redirectUrl && token) {

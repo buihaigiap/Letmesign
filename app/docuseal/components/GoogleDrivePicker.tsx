@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Box, Modal, Button, Typography, CircularProgress } from '@mui/material';
 import { Close as CloseIcon, CloudUpload as CloudUploadIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import toast from 'react-hot-toast';
 
 interface GoogleDrivePickerProps {
   open: boolean;
@@ -18,6 +19,28 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [showOAuth, setShowOAuth] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Check for Google Drive connection on mount and when modal opens
+  useEffect(() => {
+    const checkGoogleDriveConnection = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('google_drive_connected') === '1') {
+        // Remove the query parameter from URL
+        const newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+        
+        // Show success message (you might want to use toast here)
+        console.log('Google Drive connected successfully!');
+        
+        // The modal should already be open via the open prop
+        // But we can ensure it's visible
+      }
+    };
+
+    if (open) {
+      checkGoogleDriveConnection();
+    }
+  }, [open]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
