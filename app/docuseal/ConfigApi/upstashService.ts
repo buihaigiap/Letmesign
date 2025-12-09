@@ -34,6 +34,14 @@ const upstashService = {
         const url = '/api/auth/profile';
         return await axiosClient.put(url, data)
     },
+    logout: async (): Promise<any> => {
+        const url = '/api/auth/logout';
+        return await axiosClient.post(url)
+    },
+    getGoogleDriveStatus: async (): Promise<any> => {
+        const url = '/api/auth/google-drive/status';
+        return await axiosClient.get(url)
+    },
     // Template APIs
     getTemplates: async (params?: { page?: number; limit?: number; search?: string }): Promise<any> => {
         const url = '/api/templates';

@@ -132,7 +132,7 @@ impl ReminderQueue {
                 let template_name = submitter.template_name.clone().unwrap_or_else(|| format!("Document #{}", submitter.template_id));
                 println!("✅ Using template name from submitter data: '{}'", template_name);
 
-                let signature_link = format!("{}/s/{}", self.base_url, submitter.token);
+                let signature_link = format!("{}/templates/{}/edit", self.base_url, submitter.token);
 
                 println!("📧 Sending reminder #{} to {} with template name: '{}' and link: {}", 
                     reminder_number, submitter.email, template_name, signature_link);

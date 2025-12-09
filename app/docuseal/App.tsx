@@ -10,7 +10,7 @@ import TemplateEditorPage from './pages/TemplateEditorPage';
 import TemplateEditPage from './pages/TemplateEdit/TemplateEditPage';
 import SignPage from './pages/TemplateEdit/SignPage';
 import SignedSubmissionPage from './pages/SignedSubmissionPage';
-import Layout from './components/Layout';
+import Layout from './components/Layout/Layout';
 import PricingPage from './pages/Pricing/PricingPage';
 import FolderPage from './pages/DashboardPage/FolderPage';
 import SettingsPage from './pages/Settings/SettingsPage';

@@ -14,13 +14,13 @@ const SettingsPage = () => {
   const location = useLocation();
 
   const menuItems = [
-    { text: t('navigation.general'), path: '/settings/general' },
     { text: t('navigation.profile'), path: '/settings/profile' },
     { text: t('navigation.users'), path: '/settings/users' },
     { text: 'Team Accounts', path: '/settings/team' },
     { text: t('navigation.reminders'), path: '/settings/reminders' },
     { text: 'Personalization', path: '/settings/personalization' },
     { text: 'E-Sign Settings', path: '/settings/pdf-signature' },
+    { text: t('navigation.general'), path: '/settings/general' },
   ];
 
   return (
@@ -43,14 +43,15 @@ const SettingsPage = () => {
         <Paper 
           sx={{ p: 3, bgcolor: 'rgba(13, 7, 31, 0.9)', color: 'white', borderRadius: 2, backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
           <Routes>
-            <Route path="general" element={<GeneralSettings />} />
+        
             <Route path="profile" element={<ProfileSettings />} />
             <Route path="users" element={<UsersSettings />} />
             <Route path="team" element={<TeamSettings />} />
             <Route path="reminders" element={<ReminderSettingsPage />} />
             <Route path="personalization" element={<PersonalizationPage />} />
             <Route path="pdf-signature" element={<PDFSignaturePage />} />
-            <Route index element={<Navigate to="general" replace />} />
+            <Route path="general" element={<GeneralSettings />} />
+            <Route index element={<Navigate to="profile" replace />} />
           </Routes>
         </Paper>
       </Box>

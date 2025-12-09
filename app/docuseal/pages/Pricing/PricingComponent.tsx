@@ -29,7 +29,7 @@ const PricingComponent: React.FC<{ plan: any, onSubscribe: (plan: any, price?: n
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-10">
             {plan.features.map((feature, index) => (
-                <div key={index} className="flex items-start">
+                <div key={index} className="flex items-start">  
                   <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center mr-3">
                     <CircleCheck className="w-4 h-4 text-white" />
                   </div>

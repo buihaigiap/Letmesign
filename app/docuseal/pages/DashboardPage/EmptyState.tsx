@@ -10,6 +10,28 @@ import CreateTemplateButton from '../../components/CreateTemplateButton';
 const EmptyState = () => {
   const { t } = useTranslation();
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
+  const [forceReauth, setForceReauth] = useState(false);
+
+  // Check Google Drive connection status
+  useEffect(() => {
+    const checkGoogleDriveStatus = async () => {
+      try {
+        const response = await axios.get('/api/auth/google-drive/status', {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (response.data.success) {
+          setGoogleDriveConnected(response.data.data.connected);
+        }
+      } catch (error) {
+        console.error('Failed to check Google Drive status:', error);
+      }
+    };
+
+    checkGoogleDriveStatus();
+  }, []);
 
   // Check if we just returned from Google OAuth
   useEffect(() => {
@@ -19,6 +41,7 @@ const EmptyState = () => {
       window.history.replaceState({}, '', window.location.pathname);
       // Auto-open the picker
       setShowGoogleDrivePicker(true);
+      setGoogleDriveConnected(true);
       toast.success('Google Drive connected successfully!');
     }
   }, []);
@@ -65,7 +88,19 @@ const EmptyState = () => {
         textAlign: 'center',
       }}>
         <Box>
-          <FolderOpenIcon sx={{ fontSize: { xs: 40, sm: 60 }, color: 'white' }} />
+          <FolderOpenIcon 
+            sx={{ 
+              fontSize: { xs: 40, sm: 60 }, 
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                color: '#3b82f6', // blue-500
+                transform: 'scale(1.1)'
+              }
+            }}
+            onClick={() => setShowGoogleDrivePicker(true)}
+          />
         </Box>
 
         <Typography
@@ -79,19 +114,31 @@ const EmptyState = () => {
         <Typography variant="h5" sx={{ color: '#94a3b8', mb: 2, maxWidth: 600, mx: 'auto', lineHeight: 1.6, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
           {t('dashboard.emptyState.subtitle')}
         </Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexDirection: 'column', alignItems: 'center' }}>
           <CreateTemplateButton
-            text={t('dashboard.emptyState.googleDriveButton')}
-            onClick={() => setShowGoogleDrivePicker(true)}
+            text={googleDriveConnected ? t('dashboard.emptyState.googleDriveReconnectButton', 'Connect Different Account') : t('dashboard.emptyState.googleDriveButton')}
+            onClick={() => {
+              if (googleDriveConnected) {
+                setForceReauth(true);
+              }
+              setShowGoogleDrivePicker(true);
+            }}
             icon={<FolderOpenIcon />}
           />
+          
+          {/* Button Google Drive riêng biệt */}
+      
         </Box>
       </Box>
 
       <GoogleDrivePicker
         open={showGoogleDrivePicker}
-        onClose={() => setShowGoogleDrivePicker(false)}
+        onClose={() => {
+          setShowGoogleDrivePicker(false);
+          setForceReauth(false);
+        }}
         onFileSelect={handleGoogleDriveSelect}
+        forceReauth={forceReauth}
       />
     </motion.div>
   );

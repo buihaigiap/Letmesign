@@ -101,7 +101,7 @@ SELECT
         </div>
 
         <div class="content">
-            <p>You have received a document signature request from the <strong>DocuSeal Pro</strong> system.</p>
+            <p>You have received a document signature request from the <strong>Letmesign</strong> system.</p>
 
             <div class="warning">
                 <strong>Important:</strong> This link is only valid for a limited time. Please complete your signature as soon as possible.
@@ -515,7 +515,7 @@ BEGIN
         </div>
 
         <div class="content">
-            <p>You have received a document signature request from the <strong>DocuSeal Pro</strong> system.</p>
+            <p>You have received a document signature request from the <strong>Letmesign</strong> system.</p>
 
             <div class="warning">
                 <strong>Important:</strong> This link is only valid for a limited time. Please complete your signature as soon as possible.
@@ -930,7 +930,7 @@ SET body_format = 'html',
         </div>
 
         <div class="content">
-            <p>You have received a document signature request from the <strong>DocuSeal Pro</strong> system.</p>
+            <p>You have received a document signature request from the <strong>Letmesign</strong> system.</p>
 
             <div class="warning">
                 <strong>Important:</strong> This link is only valid for a limited time. Please complete your signature as soon as possible.
@@ -940,7 +940,7 @@ SET body_format = 'html',
 
             <p>Please click the button below to access and sign the document:</p>
 
-            <a href="{submitter.link}" class="button">📝 Access and Sign Document</a>
+            <a href="{submitter.link}" class="button" style="color: white">📝 Access and Sign Document</a>
 
             <p>If the button above doesn''t work, you can copy and paste the following link into your browser:</p>
             <p style="word-break: break-all; background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace;">{submitter.link}</p>

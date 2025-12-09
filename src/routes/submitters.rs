@@ -955,7 +955,7 @@ async fn send_single_completion_email(
         .join(", ");
     
     let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| "http://localhost:8081".to_string());
-    let submitter_link = format!("{}/s/{}", base_url, token);
+    let submitter_link = format!("{}/templates/{}/edit", base_url, token);
     let signed_submission_link = format!("{}/signed-submission/{}", base_url, token);
     let template_name_html = format!(r#"<a href="{}">{}</a>"#, signed_submission_link, template.name);
     let progress = format!("{} of {} completed", completed_count, total_count);

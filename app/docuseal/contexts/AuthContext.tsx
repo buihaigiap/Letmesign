@@ -68,7 +68,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(false);
   };
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // Call logout API to clean up server-side data (OAuth tokens, etc.)
+      await upstashService.logout();
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+      // Continue with local cleanup even if API call fails
+    }
+    
+    // Clear local storage and state
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);

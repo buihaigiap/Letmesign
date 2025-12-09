@@ -8,12 +8,14 @@ interface GoogleDrivePickerProps {
   open: boolean;
   onClose: () => void;
   onFileSelect: (files: any[]) => void;
+  forceReauth?: boolean;
 }
 
 const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
   open,
   onClose,
-  onFileSelect
+  onFileSelect,
+  forceReauth = false
 }) => {
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
@@ -174,7 +176,7 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
               )}
               <iframe
                 ref={iframeRef}
-                src="/template_google_drive"
+                src={`/template_google_drive${forceReauth ? '?force_reauth=1' : ''}`}
                 style={{
                   width: '100%',
                   height: '100%',

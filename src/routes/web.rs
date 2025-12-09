@@ -73,6 +73,8 @@ pub fn create_router() -> Router<AppState> {
         // .route("/subscription/payment-link", get(subscription::get_payment_link))
         .route("/auth/2fa/setup", get(setup_2fa_handler))
         .route("/auth/2fa/verify", post(verify_2fa_handler))
+        .route("/auth/logout", post(logout_handler))
+        .route("/auth/google-drive/status", get(google_drive_status_handler))
         .merge(submissions::create_submission_router())
         .merge(reminder_settings::create_router())
         .merge(global_settings::create_router())
@@ -1394,7 +1396,10 @@ async fn health_check() -> &'static str {
 
 use axum::response::Html;
 
-async fn template_google_drive_picker() -> Html<String> {
+async fn template_google_drive_picker(
+    Query(params): Query<HashMap<String, String>>,
+) -> Html<String> {
+    let force_reauth = params.get("force_reauth").map(|v| v == "1").unwrap_or(false);
     let client_id = std::env::var("GOOGLE_CLIENT_ID").unwrap_or_else(|_| "YOUR_GOOGLE_CLIENT_ID".to_string());
     let developer_key = std::env::var("GOOGLE_DEVELOPER_KEY").unwrap_or_else(|_| "YOUR_GOOGLE_DEVELOPER_KEY".to_string());
     let html = format!(r#"
@@ -1419,12 +1424,13 @@ async fn template_google_drive_picker() -> Html<String> {
 
         function onPickerApiLoad() {{
             pickerApiLoaded = true;
+            const forceReauth = {};
             fetch('/api/me', {{
                 headers: {{
                     'Authorization': 'Bearer ' + localStorage.getItem('token')
                 }}
             }}).then(response => response.json()).then(data => {{
-                if (data.success && data.data.oauth_tokens) {{
+                if (data.success && data.data.oauth_tokens && !forceReauth) {{
                     const googleToken = data.data.oauth_tokens.find(t => t.provider === 'google');
                     if (googleToken) {{
                         oauthToken = googleToken.access_token;
@@ -1475,7 +1481,7 @@ async fn template_google_drive_picker() -> Html<String> {
     <div id="picker-container"></div>
 </body>
 </html>
-"#, client_id, developer_key);
+"#, client_id, force_reauth, developer_key);
     Html(html)
 }
 
@@ -1992,6 +1998,77 @@ pub async fn verify_2fa_handler(
                 "error": format!("Failed to verify code: {}", e)
             });
             Ok(Json(response))
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/logout",
+    responses(
+        (status = 200, description = "Logged out successfully", body = ApiResponse<()>),
+        (status = 401, description = "Unauthorized", body = ApiResponse<()>),
+        (status = 500, description = "Internal server error", body = ApiResponse<()>)
+    ),
+    security(("bearer_auth" = [])),
+    tag = "auth"
+)]
+pub async fn logout_handler(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+) -> (StatusCode, Json<ApiResponse<()>>) {
+    let pool = &state.lock().await.db_pool;
+    let user_id_i32 = user_id as i32;
+
+    // Delete all OAuth tokens for this user
+    match super::super::database::queries::OAuthTokenQueries::delete_oauth_tokens_by_user(pool, user_id).await {
+        Ok(_) => {
+            println!("Successfully deleted OAuth tokens for user {}", user_id);
+        },
+        Err(e) => {
+            eprintln!("Failed to delete OAuth tokens for user {}: {}", user_id, e);
+            // Don't fail the logout if OAuth token deletion fails
+        }
+    }
+
+    ApiResponse::success((), "Logged out successfully".to_string())
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/auth/google-drive/status",
+    responses(
+        (status = 200, description = "Google Drive connection status", body = ApiResponse<serde_json::Value>),
+        (status = 401, description = "Unauthorized", body = ApiResponse<serde_json::Value>),
+        (status = 500, description = "Internal server error", body = ApiResponse<serde_json::Value>)
+    ),
+    security(("bearer_auth" = [])),
+    tag = "auth"
+)]
+pub async fn google_drive_status_handler(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+    let pool = &state.lock().await.db_pool;
+
+    match super::super::database::queries::OAuthTokenQueries::get_oauth_token(pool, user_id, "google").await {
+        Ok(Some(token)) => {
+            let status = serde_json::json!({
+                "connected": true,
+                "email": "Connected", // We don't store email, just show connected status
+                "connected_at": token.created_at
+            });
+            ApiResponse::success(status, "Google Drive connected".to_string())
+        },
+        Ok(None) => {
+            let status = serde_json::json!({
+                "connected": false
+            });
+            ApiResponse::success(status, "Google Drive not connected".to_string())
+        },
+        Err(e) => {
+            eprintln!("Failed to check Google Drive status for user {}: {}", user_id, e);
+            ApiResponse::internal_error("Failed to check Google Drive status".to_string())
         }
     }
 }

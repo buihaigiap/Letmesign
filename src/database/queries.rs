@@ -2459,6 +2459,17 @@ impl OAuthTokenQueries {
 
         Ok(())
     }
+
+    pub async fn delete_oauth_tokens_by_user(pool: &PgPool, user_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "DELETE FROM oauth_tokens WHERE user_id = $1"
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
 }
 
 impl GlobalSettingsQueries {

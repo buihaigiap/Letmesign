@@ -208,10 +208,12 @@ pub async fn create_submission(
                             match email_template_result {
                                 Ok(Some(email_template)) => {
                                     // Use custom email template
+                                    let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| "http://localhost:8081".to_string());
+                                    let signature_link = format!("{}/templates/{}/edit", base_url, token);
                                     let mut variables = std::collections::HashMap::new();
                                     variables.insert("submitter.name", submitter.name.as_str());
                                     variables.insert("template.name", template.name.as_str());
-                                    variables.insert("submitter.link", token.as_str());
+                                    variables.insert("submitter.link", &signature_link);
                                     variables.insert("account.name", "DocuSeal Pro");
 
                                     let subject = replace_template_variables(&email_template.subject, &variables);
@@ -260,17 +262,8 @@ pub async fn create_submission(
                                     }
                                 },
                                 _ => {
-                                    // Fall back to default hardcoded email
-                                    if let Err(e) = email_service.send_signature_request(
-                                        &submitter.email,
-                                        &submitter.name,
-                                        &template.name,
-                                        &token,
-                                    ).await {
-                                        eprintln!("Failed to send email to {}: {}", submitter.email, e);
-                                    } else {
-                                        emails_sent_count += 1;
-                                    }
+                                    // No email template found, skip sending email
+                                    eprintln!("No email template found for user {}, skipping email send", user_id);
                                 }
                             }
                         }
