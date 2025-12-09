@@ -26,7 +26,7 @@ const SettingsPage = () => {
   return (
     <Box sx={{ display: 'flex', minHeight: 'calc(100vh - 4rem)', color: 'white', gap: 2  , p: 2}}>
       <Box sx={{ width: 250}}>
-        <Typography variant="h6" sx={{ mb: 2 }}>
+        <Typography variant="h6" sx={{ mb: 2 }}>  
           {t('settings.title')}
         </Typography>
         <List sx={{ '& .MuiListItem-root': { mb: 1 } }}>
