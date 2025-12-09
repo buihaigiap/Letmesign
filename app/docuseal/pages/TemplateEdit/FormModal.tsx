@@ -82,32 +82,40 @@ const LinearProgressWithLabel = (props: any) => {
 };
 
 const FormModal = ({
-  open,
-  onClose,
-  currentFieldIndex,
-  fields,
-  texts,
-  onTextChange,
-  onNext,
-  onPrevious,
-  onComplete,
-  completing,
-  fileUploading,
-  progress,
-  uploadFile,
-  deleteFile,
-  selectedReason,
-  setSelectedReason,
-  customReason,
-  setCustomReason,
-  submitterInfo,
-  user,
-  clearedFields,
-  setPendingUploads
+  open,onClose,currentFieldIndex,fields,texts,onTextChange,onNext,onPrevious,onComplete,completing,
+  fileUploading,progress,uploadFile,deleteFile,selectedReason,setSelectedReason,customReason,
+  setCustomReason,submitterInfo,user,clearedFields,setPendingUploads
 }: FormModalProps) => {
   const currentField = fields[currentFieldIndex];
   const isLastField = currentFieldIndex === fields.length - 1;
+  console.log('fields'   ,fields)
 
+  const isFieldValid = (field: TemplateField, value: string) => {
+    if (field.required) {
+      // Required fields must have a non-empty value
+      return value && value.trim() !== '';
+    }
+    // Non-required fields are always valid (can be empty)
+    return true;
+  };
+
+  const handleNext = () => {
+    const currentValue = texts[currentField.id] || '';
+    if (!isFieldValid(currentField, currentValue)) {
+      toast.error(`${currentField.name} is required`);
+      return;
+    }
+    onNext();
+  };
+
+  const handleComplete = () => {
+    const currentValue = texts[currentField.id] || '';
+    if (!isFieldValid(currentField, currentValue)) {
+      toast.error(`${currentField.name} is required`);
+      return;
+    }
+    onComplete();
+  };
   const handleDeleteImage = async (fieldId: number) => {
     const fileUrl = texts[fieldId];
     if (fileUrl) {
@@ -498,13 +506,13 @@ const FormModal = ({
         )}
         {!isLastField ? (
           <CreateTemplateButton
-            onClick={onNext}
+            onClick={handleNext}
             text="Next"
           />
         ) : (
           <CreateTemplateButton
             loading={completing}
-            onClick={onComplete}
+            onClick={handleComplete}
             text="Complete"
           />
         )}
