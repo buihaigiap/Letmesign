@@ -29,7 +29,11 @@ const Pagination: React.FC<PaginationProps> = ({
       <MuiPagination
         count={totalPages}
         page={currentPage}
-        onChange={(event, page) => onPageChange(page)}
+        onChange={(event, page) => {
+          if (page <= totalPages) {
+            onPageChange(page);
+          }
+        }}
         sx={{
           '& .MuiPaginationItem-root': {
             color: 'white',

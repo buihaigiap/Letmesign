@@ -98,7 +98,7 @@ const SignedSubmissionPage = () => {
         <div className="w-full lg:w-80 bg-gray-800 rounded-lg p-4">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold mb-4">Thông tin chữ ký</h2>
+            <h2 className="text-lg font-semibold mb-4">Signature information</h2>
           </div> 
               <div className="space-y-2">
                 <p className="text-sm font-medium">{data.submitter?.name}</p>
@@ -130,7 +130,7 @@ const SignedSubmissionPage = () => {
                 )}
                 {sig.signature_value && (
                   <div className="mb-2">
-                    {sig.signature_value.startsWith('data:image/') || sig.signature_value.startsWith('blob:') || sig.signature_value.startsWith('http') ? (
+                    {sig.signature_value.startsWith('data:image/') || sig.signature_value.startsWith('http') || sig.field_info?.field_type === 'image' ? (
                       <img 
                         src={sig.signature_value} 
                         alt={`Signature ${index + 1}`} 

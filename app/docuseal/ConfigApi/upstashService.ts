@@ -35,9 +35,14 @@ const upstashService = {
         return await axiosClient.put(url, data)
     },
     // Template APIs
-    getTemplates: async (): Promise<any> => {
+    getTemplates: async (params?: { page?: number; limit?: number; search?: string }): Promise<any> => {
         const url = '/api/templates';
-        return await axiosClient.get(url)
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.append('page', params.page.toString());
+        if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.search) queryParams.append('search', params.search.toString());
+        const fullUrl = queryParams.toString() ? `${url}?${queryParams.toString()}` : url;
+        return await axiosClient.get(fullUrl)
     },
     createTemplateFromFile: async (data: any): Promise<any> => {
         const url = '/api/templates/from-file';

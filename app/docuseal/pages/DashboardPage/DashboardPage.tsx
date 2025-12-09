@@ -22,6 +22,9 @@ const DashboardPage = () => {
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [requires2FA, setRequires2FA] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const navigate = useNavigate();
   const { token, user, refreshUser } = useAuth();
   // Check if we just returned from Google OAuth
@@ -39,7 +42,7 @@ const DashboardPage = () => {
       localStorage.removeItem('redirectAfterLogin');
       window.location.href = redirectUrl;
     }
-  }, [token, navigate]);  const fetchTemplates = async () => {
+  }, [token, navigate]);  const fetchTemplates = async (page: number = 1, search: string = '') => {
     if (!token) {
         setError("Authentication token not found.");
         setLoading(false);
@@ -48,9 +51,12 @@ const DashboardPage = () => {
     try {
       setLoading(true);
       setError('');
-      const data = await upstashService.getTemplates();
+      const data = await upstashService.getTemplates({ page, limit: 12, search });
       if (data.success) {
-        setTemplates(data.data);
+        setTemplates(data.data.templates);
+        setTotal(data.data.total);
+        setTotalPages(data.data.total_pages);
+        setCurrentPage(data.data.page);
       } else {
         setError(data.message || 'Failed to fetch templates.');
       }
@@ -68,8 +74,8 @@ const DashboardPage = () => {
   };
 
   useEffect(() => {
-    fetchTemplates();
-  }, [token]);
+    fetchTemplates(1, searchQuery);
+  }, [token, searchQuery]);
 
   // Check 2FA requirements
   useEffect(() => {
@@ -110,14 +116,12 @@ const DashboardPage = () => {
     setRequires2FA(false);
 
     // Refresh templates data after 2FA setup
-    await fetchTemplates();
+    await fetchTemplates(currentPage, searchQuery);
   };  const filteredFolders = folders.filter(folder =>
     folder.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredTemplates = templates.filter(template =>
-    template.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredTemplates = templates; // Search is now handled in backend
   if (requires2FA) {
     return <TwoFactorSetup onSuccess={handle2FASuccess} />;
   }
@@ -152,7 +156,13 @@ const DashboardPage = () => {
           ) : (
             <>
               {filteredTemplates.length > 0 && (
-                <TemplatesGrid templates={filteredTemplates} onRefresh={fetchTemplates} />
+                <TemplatesGrid 
+                  templates={filteredTemplates} 
+                  onRefresh={() => fetchTemplates(currentPage, searchQuery)} 
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={(page) => fetchTemplates(page, searchQuery)}
+                />
               )}
               <EmptyState />
             </>
@@ -163,7 +173,7 @@ const DashboardPage = () => {
         open={showNewTemplateModal}
         onClose={() => setShowNewTemplateModal(false)}
         folderId={null}
-        onSuccess={fetchTemplates}
+        onSuccess={() => fetchTemplates(currentPage, searchQuery)}
       />
     </Box>
   );

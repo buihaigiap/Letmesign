@@ -80,7 +80,9 @@ const InviteModal: React.FC<InviteModalProps> = ({
           >
                  Cancel
              </Button>
-          <CreateTemplateButton text="Send Invitations" loading={loading} />
+             {Object.keys(partnerEmails).length !== 0 && (
+                 <CreateTemplateButton text="Send Invitations" loading={loading} />
+             )}
         </DialogActions>
       </form>
     </Dialog>

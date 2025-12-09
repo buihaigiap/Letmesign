@@ -636,7 +636,7 @@ impl TemplateQueries {
     }
 
     // Get templates accessible by team (invited users can see inviter's templates)
-    pub async fn get_team_templates(pool: &PgPool, user_id: i64) -> Result<Vec<DbTemplate>, sqlx::Error> {
+    pub async fn get_team_templates(pool: &PgPool, user_id: i64, offset: i64, limit: i64) -> Result<Vec<DbTemplate>, sqlx::Error> {
         // Get user's account_id
         let account_id_result = sqlx::query("SELECT account_id FROM users WHERE id = $1")
             .bind(user_id)
@@ -650,22 +650,28 @@ impl TemplateQueries {
             "SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
              FROM templates 
              WHERE account_id = $1 AND folder_id IS NULL 
-             ORDER BY created_at DESC"
+             ORDER BY created_at DESC
+             LIMIT $2 OFFSET $3"
         } else {
             "SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
              FROM templates 
              WHERE user_id = $1 AND folder_id IS NULL 
-             ORDER BY created_at DESC"
+             ORDER BY created_at DESC
+             LIMIT $2 OFFSET $3"
         };
 
         let rows = if let Some(acc_id) = account_id {
             sqlx::query(query_str)
                 .bind(acc_id)
+                .bind(limit)
+                .bind(offset)
                 .fetch_all(pool)
                 .await?
         } else {
             sqlx::query(query_str)
                 .bind(user_id)
+                .bind(limit)
+                .bind(offset)
                 .fetch_all(pool)
                 .await?
         };
@@ -686,6 +692,156 @@ impl TemplateQueries {
             });
         }
         Ok(templates)
+    }
+
+    pub async fn get_team_templates_with_search(pool: &PgPool, user_id: i64, offset: i64, limit: i64, search: &str) -> Result<Vec<DbTemplate>, sqlx::Error> {
+        // Get user's account_id
+        let account_id_result = sqlx::query("SELECT account_id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let account_id: Option<i64> = account_id_result.try_get("account_id")?;
+
+        // If user has account_id, get all templates in that account
+        // Otherwise, only get user's own templates
+        let (query_str, bind_count) = if account_id.is_some() {
+            if search.is_empty() {
+                ("SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
+                 FROM templates 
+                 WHERE account_id = $1 AND folder_id IS NULL 
+                 ORDER BY created_at DESC
+                 LIMIT $2 OFFSET $3", 3)
+            } else {
+                ("SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
+                 FROM templates 
+                 WHERE account_id = $1 AND folder_id IS NULL AND name ILIKE $2
+                 ORDER BY created_at DESC
+                 LIMIT $3 OFFSET $4", 4)
+            }
+        } else {
+            if search.is_empty() {
+                ("SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
+                 FROM templates 
+                 WHERE user_id = $1 AND folder_id IS NULL 
+                 ORDER BY created_at DESC
+                 LIMIT $2 OFFSET $3", 3)
+            } else {
+                ("SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
+                 FROM templates 
+                 WHERE user_id = $1 AND folder_id IS NULL AND name ILIKE $2
+                 ORDER BY created_at DESC
+                 LIMIT $3 OFFSET $4", 4)
+            }
+        };
+
+        let rows = if let Some(acc_id) = account_id {
+            if search.is_empty() {
+                sqlx::query(query_str)
+                    .bind(acc_id)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?
+            } else {
+                sqlx::query(query_str)
+                    .bind(acc_id)
+                    .bind(format!("%{}%", search))
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?
+            }
+        } else {
+            if search.is_empty() {
+                sqlx::query(query_str)
+                    .bind(user_id)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?
+            } else {
+                sqlx::query(query_str)
+                    .bind(user_id)
+                    .bind(format!("%{}%", search))
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?
+            }
+        };
+
+        let mut templates = Vec::new();
+        for row in rows {
+            templates.push(DbTemplate {
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                slug: row.try_get("slug")?,
+                user_id: row.try_get("user_id")?,
+                account_id: row.try_get("account_id")?,
+                folder_id: row.try_get("folder_id")?,
+                // fields: None, // Removed - now stored in template_fields table
+                documents: row.try_get("documents")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            });
+        }
+        Ok(templates)
+    }
+
+    pub async fn get_team_templates_count_with_search(pool: &PgPool, user_id: i64, search: &str) -> Result<i64, sqlx::Error> {
+        // Get user's account_id
+        let account_id_result = sqlx::query("SELECT account_id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let account_id: Option<i64> = account_id_result.try_get("account_id")?;
+
+        // If user has account_id, count all templates in that account
+        // Otherwise, count only user's own templates
+        let query_str = if account_id.is_some() {
+            if search.is_empty() {
+                "SELECT COUNT(*) as count FROM templates WHERE account_id = $1 AND folder_id IS NULL"
+            } else {
+                "SELECT COUNT(*) as count FROM templates WHERE account_id = $1 AND folder_id IS NULL AND name ILIKE $2"
+            }
+        } else {
+            if search.is_empty() {
+                "SELECT COUNT(*) as count FROM templates WHERE user_id = $1 AND folder_id IS NULL"
+            } else {
+                "SELECT COUNT(*) as count FROM templates WHERE user_id = $1 AND folder_id IS NULL AND name ILIKE $2"
+            }
+        };
+
+        let row = if let Some(acc_id) = account_id {
+            if search.is_empty() {
+                sqlx::query(query_str)
+                    .bind(acc_id)
+                    .fetch_one(pool)
+                    .await?
+            } else {
+                sqlx::query(query_str)
+                    .bind(acc_id)
+                    .bind(format!("%{}%", search))
+                    .fetch_one(pool)
+                    .await?
+            }
+        } else {
+            if search.is_empty() {
+                sqlx::query(query_str)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?
+            } else {
+                sqlx::query(query_str)
+                    .bind(user_id)
+                    .bind(format!("%{}%", search))
+                    .fetch_one(pool)
+                    .await?
+            }
+        };
+
+        let count: i64 = row.try_get("count")?;
+        Ok(count)
     }
 
     pub async fn update_template(pool: &PgPool, id: i64, name: Option<&str>) -> Result<Option<DbTemplate>, sqlx::Error> {

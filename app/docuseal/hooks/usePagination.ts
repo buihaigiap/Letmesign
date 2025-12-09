@@ -23,11 +23,6 @@ export const usePagination = <T,>({
 
   const resetPage = () => setCurrentPage(1);
 
-  // Reset to page 1 when items change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [items]);
-
   return {
     currentPage,
     setCurrentPage,

@@ -57,7 +57,7 @@ const FieldProperties: React.FC<FieldPropertiesProps> = ({
         <div>
           <div className="max-h-40 overflow-y-auto space-y-2">
             <div>
-              <div className="space-y-1">
+              <div >
                 {fields.filter(f => f.partner === currentPartner).map(field => (
                   <div
                     key={field.tempId}

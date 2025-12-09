@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State, Query, OriginalUri},
+    extract::{Path, State, Query as AxumQuery, OriginalUri},
     http::{StatusCode, header},
     response::{Json, Response, IntoResponse},
     routing::{get, post, put, delete},
@@ -9,7 +9,7 @@ use axum::{
     middleware,
 };
 use std::collections::HashMap;
-use axum_extra::extract::Multipart;
+use axum_extra::extract::{Query, Multipart};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde_json;
@@ -75,6 +75,13 @@ use crate::services::storage::StorageService;
 use crate::common::jwt::auth_middleware;
 
 use crate::routes::web::AppState;
+
+#[derive(Deserialize)]
+pub struct GetTemplatesQuery {
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
+    pub search: Option<String>,
+}
 
 #[utoipa::path(
     get,
@@ -972,20 +979,31 @@ pub async fn move_template_to_folder(
 #[utoipa::path(
     get,
     path = "/api/templates",
+    params(
+        ("page" = Option<i64>, Query, description = "Page number (1-based)"),
+        ("limit" = Option<i64>, Query, description = "Number of items per page"),
+        ("search" = Option<String>, Query, description = "Search query for template names")
+    ),
     responses(
-        (status = 200, description = "List all templates", body = ApiResponse<Vec<Template>>),
-        (status = 500, description = "Internal server error", body = ApiResponse<Vec<Template>>)
+        (status = 200, description = "List all templates with pagination", body = ApiResponse<serde_json::Value>),
+        (status = 500, description = "Internal server error", body = ApiResponse<serde_json::Value>)
     ),
     security(("bearer_auth" = [])),
     tag = "templates"
 )]
 pub async fn get_templates(
     State(state): State<AppState>,
+    Query(params): Query<GetTemplatesQuery>,
     Extension(user_id): Extension<i64>,
-) -> (StatusCode, Json<ApiResponse<Vec<Template>>>) {
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
     let pool = &state.lock().await.db_pool;
 
-    match TemplateQueries::get_team_templates(pool, user_id).await {
+    let page = params.page.unwrap_or(1).max(1);
+    let limit = params.limit.unwrap_or(12).max(1).min(100); // Max 100 per page
+    let offset = (page - 1) * limit;
+    let search = params.search.as_deref().unwrap_or("").trim();
+
+    match TemplateQueries::get_team_templates_with_search(pool, user_id, offset, limit, search).await {
         Ok(db_templates) => {
             let mut templates = Vec::new();
             for db_template in db_templates {
@@ -1014,7 +1032,21 @@ pub async fn get_templates(
                 template.user_name = user_name;
                 templates.push(template);
             }
-            ApiResponse::success(templates, "Templates retrieved successfully".to_string())
+
+            // Get total count
+            match TemplateQueries::get_team_templates_count_with_search(pool, user_id, search).await {
+                Ok(total) => {
+                    let response = serde_json::json!({
+                        "templates": templates,
+                        "total": total,
+                        "page": page,
+                        "limit": limit,
+                        "total_pages": ((total as f64) / (limit as f64)).ceil() as i64
+                    });
+                    ApiResponse::success(response, "Templates retrieved successfully".to_string())
+                }
+                Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
+            }
         }
         Err(e) => ApiResponse::internal_error(format!("Failed to retrieve templates: {}", e)),
     }

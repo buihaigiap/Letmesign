@@ -17,13 +17,17 @@ import upstashService from '../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 import { canTemplate } from '@/hooks/useRoleAccess';
 import Pagination from '../../components/Pagination';
+import { usePagination } from '../../hooks/usePagination';
 interface TemplatesGridProps {
   templates: any;
   onRefresh: () => void;
   currentFolderId?: number | null;
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
 }
 import { useRoleAccess } from '@/hooks/useRoleAccess';
-const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, currentFolderId }) => {
+const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, currentFolderId, currentPage, totalPages, onPageChange }) => {
   const [hoveredCard, setHoveredCard] = useState<string | number | null>(null);
   const navigate = useNavigate();
   const [showMoveModal, setShowMoveModal] = useState(false);
@@ -33,17 +37,6 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
   const [selectedValue, setSelectedValue] = useState<any>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const hasAccess = useRoleAccess(['agent']);
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
-  const totalPages = Math.ceil(templates.length / itemsPerPage);
-  const currentItems = templates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages || 1);
-    }
-  }, [currentPage, totalPages]);
   useEffect(() => {
     if (showMoveModal) {
       const fetchFolders = async () => {
@@ -194,7 +187,7 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
           px: { xs: 2, sm: 0 },
         }}
       >
-        {currentItems.map(template => (
+        {templates.map(template => (
           <Box key={template.id}>
             <motion.div
               variants={itemVariants}
@@ -208,14 +201,13 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
                   background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)',
                   backdropFilter: 'blur(10px)',
                   borderRadius: 4,
-                  overflow: 'hidden',
+                  overflow: 'visible',
                   position: 'relative',
-                  transition: 'all 0.3s ease',
                 }}
                 onMouseEnter={() => setHoveredCard(template.id)}
                 onMouseLeave={() => setHoveredCard(null)}
               >
-                <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+                <CardContent sx={{overflow: 'hidden', borderRadius: 4 }}>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 2, sm: 3 }, mb: 3 }}>
                     <Box sx={{
                       p: { xs: 1.5, sm: 2 },
@@ -237,7 +229,6 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
                         sx={{
                           color: 'white',
                           fontWeight: '700',
-                          mb: 1.5,
                           fontSize: { xs: '1rem', sm: '1rem' },
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -277,7 +268,7 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
                       gap: 1,
                       zIndex: 10,
                     }}
-                    onClick={(e) => e.preventDefault()} // Prevent card click when clicking actions
+                    onClick={(e) => e.preventDefault()}
                   >
                     <Tooltip title="Move" placement="left">
                         <DragIndicatorIcon
@@ -327,11 +318,11 @@ const TemplatesGrid: React.FC<TemplatesGridProps> = ({ templates, onRefresh, cur
           </Box>
         ))}
       </Box>
-        {currentItems.length > 0 &&  (
+        {templates.length > 0 &&  (
            <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
-              onPageChange={setCurrentPage}
+              onPageChange={onPageChange}
             />
         )}
       

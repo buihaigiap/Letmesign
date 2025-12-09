@@ -144,7 +144,7 @@ const CompletionDrawer: React.FC<CompletionDrawerProps> = ({
         </Button>
 
         {/* Redirect Button */}
-        {submitterInfo?.global_settings?.redirect_title === "" && (
+        {submitterInfo?.global_settings?.redirect_title !== "" && (
           <CreateTemplateButton
             text={submitterInfo?.global_settings?.redirect_title}
             onClick={() => {
