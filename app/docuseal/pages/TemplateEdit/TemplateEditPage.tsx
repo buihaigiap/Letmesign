@@ -26,8 +26,6 @@ interface TemplateField {
     width: number;
     height: number;
     page: number;
-    suggested?: string;
-    allow_custom?: boolean;
   };
   options?: any;
   partner?: string;

@@ -56,17 +56,7 @@ pub struct FieldPosition {
     pub width: f64,
     pub height: f64,
     pub page: i32,
-    pub suggested: Option<SuggestedPosition>,
-    pub allow_custom: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SuggestedPosition {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub page: i32,
+    pub default_value: Option<String>, // Default value content for the field
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -125,6 +115,7 @@ pub struct CreateTemplateFieldRequest {
     pub position: Option<FieldPosition>,
     pub options: Option<Value>,
     pub partner: Option<String>, // Which partner/signer this field belongs to
+    pub default_value: Option<String>, // Default value for the field
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -136,6 +127,7 @@ pub struct UpdateTemplateFieldRequest {
     pub position: Option<FieldPosition>,
     pub options: Option<Value>,
     pub partner: Option<String>, // Which partner/signer this field belongs to
+    pub default_value: Option<String>, // Default value for the field
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

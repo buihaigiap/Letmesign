@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Template } from '../types';
-import DocumentEditor from '../components/PdfFieldEditor/index';
+import DocumentEditor from '../components/PdfFieldEditor/PdfFieldEditor';
 import upstashService from '../ConfigApi/upstashService';
 import { Box, Button, CircularProgress, Typography, Alert } from '@mui/material';
 import { ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material';
@@ -44,7 +44,8 @@ const TemplateEditorPage = () => {
             position: f.position,
             display_order: f.display_order,
             options: f.options,
-            partner: f.partner
+            partner: f.partner,
+            default_value: f.default_value
           })),
           user_name: ''
         };

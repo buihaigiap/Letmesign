@@ -1074,7 +1074,7 @@ pub async fn get_public_submitter_fields(
                                     position: sf.position.map(|pos| {
                                         // Parse position JSON to FieldPosition
                                         serde_json::from_value(pos).unwrap_or_else(|_| crate::models::template::FieldPosition {
-                                            x: 0.0, y: 0.0, width: 100.0, height: 20.0, page: 1, suggested: None, allow_custom: None
+                                            x: 0.0, y: 0.0, width: 100.0, height: 20.0, page: 1, default_value: None
                                         })
                                     }),
                                     options: sf.options,

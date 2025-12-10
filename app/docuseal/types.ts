@@ -53,6 +53,7 @@ export interface Position {
   width: number;
   height: number;
   page: number;
+  default_value?: string;
 }
 
 export type FieldType = 'text' | 'signature' | 'initials' | 'date' | 'checkbox' | 'number' | 'radio' | 'multiple' | 'select' | 'cells' | 'image' | 'file';

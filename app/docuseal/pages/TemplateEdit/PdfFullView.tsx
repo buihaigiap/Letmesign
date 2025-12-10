@@ -1,7 +1,7 @@
 import React from 'react';
 import PdfDisplay from '../../components/PdfDisplay';
 import FieldRenderer from '../../components/FieldRenderer';
-import { partnerColorClasses } from '../../components/PdfFieldEditor/constants';
+import { partnerColorClasses } from '../../components/PdfFieldEditor/partnerColors';
 import { getFieldClass } from '../../components/PdfFieldEditor/utils';
 import { useAuth } from '../../contexts/AuthContext';
 interface TemplateInfo {
@@ -30,8 +30,6 @@ interface TemplateField {
     width: number;
     height: number;
     page: number;
-    suggested?: string;
-    allow_custom?: boolean;
   };
   options?: any;
   partner?: string;

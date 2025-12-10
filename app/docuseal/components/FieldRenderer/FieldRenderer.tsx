@@ -8,6 +8,7 @@ interface FieldPosition {
   width: number;
   height: number;
   page: number;
+  default_value?: string;
 }
 
 interface Field {
@@ -60,8 +61,9 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
       return null;
     }
 
-    // Xác định giá trị hiển thị: ưu tiên value, sau đó dùng default từ user profile
+    // Xác định giá trị hiển thị: ưu tiên value, sau đó dùng default_value từ field, sau đó dùng default từ user profile
     const displayValue = value ||
+      field.position?.default_value ||
       (field.field_type === 'signature' ? defaultSignature :
         field.field_type === 'initials' ? defaultInitials :
           undefined);

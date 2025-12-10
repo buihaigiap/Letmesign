@@ -1306,7 +1306,6 @@ impl TemplateFieldQueries {
         .bind(&field_data.partner)
         .bind(now)
         .bind(now)
-        .bind(now)
         .fetch_one(pool)
         .await?;
 

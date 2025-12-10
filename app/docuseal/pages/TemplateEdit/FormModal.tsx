@@ -25,45 +25,11 @@ interface TemplateField {
     width: number;
     height: number;
     page: number;
-    suggested?: string;
-    allow_custom?: boolean;
   };
   options?: any;
   partner?: string;
   created_at: string;
   updated_at: string;
-}
-
-interface FormModalProps {
-  open: boolean;
-  onClose: () => void;
-  currentFieldIndex: number;
-  fields: TemplateField[];
-  texts: Record<number, string>;
-  onTextChange: (fieldId: number, value: string, isMultiple?: boolean, checked?: boolean) => void;
-  onNext: () => void;
-  onPrevious: () => void;
-  onComplete: () => void;
-  completing: boolean;
-  fileUploading: boolean;
-  progress: number;
-  uploadFile: (file: File) => Promise<string | null>;
-  deleteFile: (fileUrl: string) => Promise<boolean>;
-  selectedReason: string;
-  setSelectedReason: (reason: string) => void;
-  customReason: string;
-  setCustomReason: (reason: string) => void;
-  submitterInfo: {
-    id: number;
-    email: string;
-    template_name?: string;
-    status: string;
-    signed_at?: string;
-    global_settings?: any;
-  } | null;
-  user: any;
-  clearedFields: Set<number>;
-  setPendingUploads: React.Dispatch<React.SetStateAction<Record<number, File>>>;
 }
 
 const LinearProgressWithLabel = (props: any) => {
@@ -85,7 +51,7 @@ const FormModal = ({
   open,onClose,currentFieldIndex,fields,texts,onTextChange,onNext,onPrevious,onComplete,completing,
   fileUploading,progress,uploadFile,deleteFile,selectedReason,setSelectedReason,customReason,
   setCustomReason,submitterInfo,user,clearedFields,setPendingUploads
-}: FormModalProps) => {
+}: any) => {
   const currentField = fields[currentFieldIndex];
   const isLastField = currentFieldIndex === fields.length - 1;
   console.log('fields'   ,fields)
@@ -174,7 +140,7 @@ const FormModal = ({
           {currentField.field_type === 'date' ? (
             <TextField
               type="date"
-              value={texts[currentField.id] || ''}
+              value={texts[currentField.id] || currentField.position?.default_value || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               required={currentField.required}
@@ -376,7 +342,7 @@ const FormModal = ({
           ) : currentField.field_type === 'number' ? (
             <TextField
               type="number"
-              value={texts[currentField.id] || ''}
+              value={texts[currentField.id] || currentField.position?.default_value || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               placeholder={`Enter ${currentField.name}`}
@@ -437,7 +403,7 @@ const FormModal = ({
             </FormControl>
           ) : currentField.field_type === 'cells' ? (
             <TextField
-              value={texts[currentField.id] || ''}
+              value={texts[currentField.id] || currentField.position?.default_value || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               placeholder={`Enter up to ${currentField.options?.columns || 1} characters`}
@@ -449,7 +415,7 @@ const FormModal = ({
             />
           ) : (
             <TextField
-              value={texts[currentField.id] || ''}
+              value={texts[currentField.id] || currentField.position?.default_value || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               placeholder={`Enter ${currentField.name}`}

@@ -41,6 +41,34 @@ export const useFieldManagement = (
     });
   };
 
+  const duplicateField = (tempId: string) => {
+    const field = fields.find(f => f.tempId === tempId);
+    if (!field) return;
+
+    const newTempId = `field-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const baseName = field.name.replace(/_\d+$/, ''); // Remove trailing number if exists
+    const existingNames = fields.map(f => f.name);
+    let newName = baseName;
+    let counter = 1;
+    while (existingNames.includes(newName)) {
+      newName = `${baseName}_${counter}`;
+      counter++;
+    }
+
+    const duplicatedField = {
+      ...field,
+      tempId: newTempId,
+      name: newName,
+      position: field.position ? {
+        ...field.position,
+        x: Math.min(0.9, field.position.x + 0.05), // Offset slightly
+        y: Math.min(0.9, field.position.y + 0.05),
+      } : field.position,
+    };
+
+    setFields(prev => [...prev, duplicatedField]);
+  };
+
   const handleSaveClick = async () => {
     if (!token) return;
 
@@ -105,7 +133,8 @@ export const useFieldManagement = (
           y: clampedPosition.y * effectivePageHeight,
           width: clampedPosition.width * effectivePageWidth,
           height: clampedPosition.height * effectivePageHeight,
-          page: clampedPosition.page
+          page: clampedPosition.page,
+          ...(field.position?.default_value !== undefined && { default_value: field.position.default_value })
         } : field.position
       } as NewTemplateField;
     };
@@ -128,7 +157,8 @@ export const useFieldManagement = (
           Math.abs(current.position.y - original.position.y) > 0.01 ||
           Math.abs(current.position.width - original.position.width) > 0.01 ||
           Math.abs(current.position.height - original.position.height) > 0.01 ||
-          current.position.page !== original.position.page;
+          current.position.page !== original.position.page ||
+          current.position.default_value !== original.position.default_value;
         if (posChanged) return true;
       } else if (current.position !== original.position) {
         return true;
@@ -160,6 +190,7 @@ export const useFieldManagement = (
           if (Math.abs(f.position.width - orig.position.width) > 0.01) posChanges.push('width');
           if (Math.abs(f.position.height - orig.position.height) > 0.01) posChanges.push('height');
           if (f.position.page !== orig.position.page) posChanges.push('page');
+          if (f.position.default_value !== orig.position.default_value) posChanges.push('default_value');
           if (posChanges.length > 0) changes.push(`position: ${posChanges.join(', ')}`);
         }
         console.log(`    ${f.name} (ID: ${f.id}): ${changes.join(', ')}`);
@@ -187,7 +218,8 @@ export const useFieldManagement = (
             y: field.position.y * effectivePageHeight,
             width: field.position.width * effectivePageWidth,
             height: field.position.height * effectivePageHeight,
-            page: field.position.page
+            page: field.position.page,
+            ...(field.position.default_value !== undefined && { default_value: field.position.default_value })
           } : field.position;
 
           return upstashService.updateField(templateId, field.id, {
@@ -247,6 +279,7 @@ export const useFieldManagement = (
   return {
     updateField,
     deleteField,
+    duplicateField,
     handleSaveClick,
     initialFieldsLengthRef
   };
