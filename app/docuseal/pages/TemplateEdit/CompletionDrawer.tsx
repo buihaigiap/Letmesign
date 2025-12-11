@@ -28,7 +28,7 @@ const CompletionDrawer: React.FC<CompletionDrawerProps> = ({
 }) => {
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [isSendingEmail, setIsSendingEmail] = React.useState(false);
-
+  
   React.useEffect(() => {
     if (submitterInfo?.global_settings?.enable_confetti && open) {
       confetti({
@@ -42,6 +42,10 @@ const CompletionDrawer: React.FC<CompletionDrawerProps> = ({
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
+      console.log('Signatures for download:', signatures.map(sig => ({
+        field_type: sig.field_info?.field_type,
+        signature_value: sig.signature_value
+      })));
       await downloadSignedPDF(
         pdfUrl,
         signatures,

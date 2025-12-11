@@ -62,6 +62,27 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
     setInputWidths(prev => ({ ...prev, [tempId]: Math.max(width, 24) }));
   };
 
+  // Don't render fields until canvas dimensions are ready
+  if (!canvasClientWidth || !canvasClientHeight) {
+    return (
+      <div
+        ref={overlayRef}
+        className="absolute top-0 left-0 w-full h-full z-10"
+        onMouseDown={handleOverlayMouseDown}
+        onMouseMove={handleOverlayMouseMove}
+        onMouseUp={handleOverlayMouseUp}
+        style={{ cursor: activeTool !== 'cursor' ? 'crosshair' : 'default' }}
+      >
+        {currentRect && (
+          <div
+            className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-20 pointer-events-none"
+            style={currentRect}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       ref={overlayRef}
@@ -78,12 +99,12 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
           <Rnd
             key={f.tempId}
             size={{
-              width: f.position!.width * (canvasClientWidth || 600),
-              height: f.position!.height * (canvasClientHeight || 800)
+              width: f.position!.width * canvasClientWidth,
+              height: f.position!.height * canvasClientHeight
             }}
             position={{
-              x: f.position!.x * (canvasClientWidth || 600),
-              y: f.position!.y * (canvasClientHeight || 800)
+              x: f.position!.x * canvasClientWidth,
+              y: f.position!.y * canvasClientHeight
             }}
             onDragStop={(e, d) => handleDragStop(f.tempId, e, d)}
             onResizeStop={(e, direction, ref, delta, position) => handleResizeStop(f.tempId, e, direction, ref, delta, position)}
@@ -201,10 +222,11 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                 )}
                 <GripVerticalMenu
                   tempId={f.tempId}
-                  onDuplicate={duplicateField}
-                  onDelete={deleteField}
                   defaultValue={f.position?.default_value || ''}
                   onDefaultValueChange={(tempId, value) => updateField(tempId, { position: { ...f.position, default_value: value } })}
+                  validation={f.options?.validation || { type: 'none' }}
+                  onValidationChange={(tempId, validation) => updateField(tempId, { options: { ...f.options, validation } })}
+                  overlayRef={overlayRef}
                 />
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteField(f.tempId); }}

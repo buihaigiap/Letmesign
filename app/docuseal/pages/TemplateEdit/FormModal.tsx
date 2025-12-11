@@ -56,19 +56,120 @@ const FormModal = ({
   const isLastField = currentFieldIndex === fields.length - 1;
   console.log('fields'   ,fields)
 
-  const isFieldValid = (field: TemplateField, value: string) => {
-    if (field.required) {
-      // Required fields must have a non-empty value
-      return value && value.trim() !== '';
+  const validateField = (field: TemplateField, value: string): string | null => {
+    // Skip validation for signature and initials fields - they are handled by SignaturePad
+    if (field.field_type === 'signature' || field.field_type === 'initials') {
+      return null;
     }
-    // Non-required fields are always valid (can be empty)
-    return true;
+
+    // Skip validation for non-text fields
+    const textFieldTypes = ['text', 'date', 'number', 'cells'];
+    if (!textFieldTypes.includes(field.field_type)) {
+      // Only check required for non-text fields
+      if (field.required && (!value || value.trim() === '')) {
+        return `${field.name} is required`;
+      }
+      return null;
+    }
+
+    // Check required
+    if (field.required && (!value || value.trim() === '')) {
+      return `${field.name} is required`;
+    }
+
+    // If not required and empty, skip validation
+    if (!value || value.trim() === '') {
+      return null;
+    }
+
+    const validation = field.options?.validation;
+    if (!validation || validation.type === 'none') {
+      return null;
+    }
+
+    const { type, minLength, maxLength, regex, errorMessage } = validation;
+
+    switch (type) {
+      case 'length':
+        const length = value.length;
+        if (minLength && length < parseInt(minLength)) {
+          return `Minimum length is ${minLength} characters`;
+        }
+        if (maxLength && length > parseInt(maxLength)) {
+          return `Maximum length is ${maxLength} characters`;
+        }
+        break;
+
+      case 'ssn':
+        if (!/^\d{3}-\d{2}-\d{4}$/.test(value)) {
+          return 'Invalid SSN format (XXX-XX-XXXX)';
+        }
+        break;
+
+      case 'ein':
+        if (!/^\d{2}-\d{7}$/.test(value)) {
+          return 'Invalid EIN format (XX-XXXXXXX)';
+        }
+        break;
+
+      case 'email':
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          return 'Invalid email format';
+        }
+        break;
+
+      case 'url':
+        try {
+          new URL(value);
+        } catch {
+          return 'Invalid URL format';
+        }
+        break;
+
+      case 'zip':
+        if (!/^\d{5}(-\d{4})?$/.test(value)) {
+          return 'Invalid ZIP code format';
+        }
+        break;
+
+      case 'custom':
+        if (regex) {
+          try {
+            // Ensure exact match by wrapping with ^ and $
+            const exactPattern = regex.startsWith('^') && regex.endsWith('$') ? regex : `^${regex}$`;
+            const pattern = new RegExp(exactPattern);
+            if (!pattern.test(value)) {
+              return errorMessage || 'Invalid format';
+            }
+          } catch (e) {
+            return 'Invalid regex pattern';
+          }
+        }
+        break;
+
+      case 'numbers_only':
+        if (!/^\d+$/.test(value)) {
+          return 'Only numbers allowed';
+        }
+        break;
+
+      case 'letters_only':
+        if (!/^[a-zA-Z\s]+$/.test(value)) {
+          return 'Only letters allowed';
+        }
+        break;
+    }
+
+    return null;
   };
+
+
 
   const handleNext = () => {
     const currentValue = texts[currentField.id] || '';
-    if (!isFieldValid(currentField, currentValue)) {
-      toast.error(`${currentField.name} is required`);
+    const error = validateField(currentField, currentValue);
+    if (error) {
+      toast.error(error);
       return;
     }
     onNext();
@@ -76,8 +177,9 @@ const FormModal = ({
 
   const handleComplete = () => {
     const currentValue = texts[currentField.id] || '';
-    if (!isFieldValid(currentField, currentValue)) {
-      toast.error(`${currentField.name} is required`);
+    const error = validateField(currentField, currentValue);
+    if (error) {
+      toast.error(error);
       return;
     }
     onComplete();

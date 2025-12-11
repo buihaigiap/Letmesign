@@ -145,10 +145,10 @@ export const useCanvasInteractions = ({
 
   const handleDragStop = useCallback((tempId: string, e: any, d: { x: number; y: number }) => {
     const field = fields.find(f => f.tempId === tempId);
-    if (!field || !field.position) return;
+    if (!field || !field.position || !canvasClientWidth || !canvasClientHeight) return;
 
-    const displayWidth = canvasClientWidth || 600;
-    const displayHeight = canvasClientHeight || 800;
+    const displayWidth = canvasClientWidth;
+    const displayHeight = canvasClientHeight;
 
     const x = Math.max(0, Math.min(1 - field.position.width, d.x / displayWidth));
     const y = Math.max(0, Math.min(1 - field.position.height, d.y / displayHeight));
@@ -164,10 +164,10 @@ export const useCanvasInteractions = ({
 
   const handleResizeStop = useCallback((tempId: string, e: any, direction: string, ref: HTMLElement, delta: any, position: { x: number; y: number }) => {
     const field = fields.find(f => f.tempId === tempId);
-    if (!field || !field.position) return;
+    if (!field || !field.position || !canvasClientWidth || !canvasClientHeight) return;
 
-    const displayWidth = canvasClientWidth || 600;
-    const displayHeight = canvasClientHeight || 800;
+    const displayWidth = canvasClientWidth;
+    const displayHeight = canvasClientHeight;
 
     const x = Math.max(0, position.x / displayWidth);
     const y = Math.max(0, position.y / displayHeight);

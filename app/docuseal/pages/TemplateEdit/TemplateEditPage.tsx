@@ -88,7 +88,6 @@ const TemplateEditPage = () => {
         if (data.data.information) {
           // Fetch full submitter info to get status
           const submitterData = await upstashService.getSubmitterInfo(token);
-          console.log('submitterData', submitterData);
           if (submitterData.success) {
             setSubmitterInfo({
               id: data.data.information.id,
