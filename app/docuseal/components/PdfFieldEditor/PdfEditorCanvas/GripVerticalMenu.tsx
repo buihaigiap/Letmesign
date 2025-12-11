@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { GripVertical } from 'lucide-react';
+import { CircleAlert, GripVertical } from 'lucide-react';
 import {
   Box,
   Select,
@@ -8,10 +8,17 @@ import {
   FormControl,
   InputLabel,
   TextField,
+  Switch,
+  FormControlLabel,
+  Typography,
 } from '@mui/material';
+import DescriptionDialog from './DescriptionDialog';
+import upstashService from '../../../ConfigApi/upstashService';
+import toast from 'react-hot-toast';
 
 interface GripVerticalMenuProps {
   tempId: string;
+  fieldId: number;
   defaultValue?: string;
   onDefaultValueChange: (tempId: string, value: string) => void;
   validation?: {
@@ -22,16 +29,29 @@ interface GripVerticalMenuProps {
     errorMessage?: string;
   };
   onValidationChange: (tempId: string, validation: any) => void;
+  readOnly?: boolean;
+  onReadOnlyChange: (tempId: string, readOnly: boolean) => void;
+  onDescriptionChange: (tempId: string, desc: { displayTitle: string, description: string }) => void;
   overlayRef: React.RefObject<HTMLDivElement>;
+  token: string;
+  templateId: number;
+  currentOptions?: any;
 }
 
 const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   tempId,
+  fieldId,
   defaultValue = '',
   onDefaultValueChange,
   validation = { type: 'none' },
   onValidationChange,
+  readOnly = false,
+  onReadOnlyChange,
+  onDescriptionChange,
   overlayRef,
+  token,
+  templateId,
+  currentOptions = {},
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const [localDefaultValue, setLocalDefaultValue] = React.useState(defaultValue);
@@ -40,7 +60,13 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   const [maxLength, setMaxLength] = React.useState(validation.maxLength || '');
   const [regex, setRegex] = React.useState(validation.regex || '');
   const [errorMessage, setErrorMessage] = React.useState(validation.errorMessage || '');
+  const [isReadOnly, setIsReadOnly] = React.useState(readOnly);
   const gripRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [selectOpen, setSelectOpen] = React.useState(false);
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [description, setDescription] = React.useState('');
+  const [displayTitle, setDisplayTitle] = React.useState('');
 
   React.useEffect(() => {
     setLocalDefaultValue(defaultValue);
@@ -54,6 +80,32 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     setErrorMessage(validation.errorMessage || '');
   }, [validation]);
 
+  React.useEffect(() => {
+    setIsReadOnly(readOnly);
+  }, [readOnly]);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (selectOpen || dialogOpen) return;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        gripRef.current &&
+        !gripRef.current.contains(event.target as Node)
+      ) {
+        setShowMenu(false);
+      }
+    };
+
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMenu, selectOpen, dialogOpen]);
+
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowMenu(!showMenu);
@@ -64,9 +116,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     onDefaultValueChange(tempId, value);
   };
 
-  const handleDefaultValueBlur = () => {
-    setShowMenu(false);
-  };
+  
 
   const handleMenuClose = () => {
     setShowMenu(false);
@@ -88,6 +138,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
       setMaxLength(validation.maxLength || '');
       setRegex(validation.regex || '');
       setErrorMessage(validation.errorMessage || '');
+      setIsReadOnly(readOnly);
       setShowMenu(false);
     }
   };
@@ -104,6 +155,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     { value: 'numbers_only', label: 'Numbers only' },
     { value: 'letters_only', label: 'Letters only' },
   ];
+
   const inputStyle = {
     width: "100%",
     "& .MuiOutlinedInput-input": {
@@ -136,6 +188,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
 
       {showMenu && gripRef.current && overlayRef.current && ReactDOM.createPortal(
         <Box
+          ref={menuRef}
           className="MuiMenu-root"
           sx={{
             position: 'absolute',
@@ -227,6 +280,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
               ))}
             </Select>
           </FormControl>
+
           {validationType === 'length' && (
             <Box
               sx={{ 
@@ -319,9 +373,66 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
               />
             </Box>
           )}
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isReadOnly}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIsReadOnly(checked);
+                  onReadOnlyChange(tempId, checked);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: 'black',
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: 'black',
+                  },
+                }}
+              />
+            }
+            label="Read-Only"
+            sx={{
+              color: 'black',
+              '& .MuiFormControlLabel-label': {
+                fontSize: '14px',
+              },
+            }}
+          />
 
+          <Box onClick={(e) => {
+            e.stopPropagation();
+            setDisplayTitle(currentOptions?.displayTitle || '');
+            setDescription(currentOptions?.description || '');
+            setDialogOpen(true);
+            setShowMenu(false);
+          }} sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <CircleAlert color='black' style={{ marginRight: 8 }} />
+            <Typography sx={{ fontSize: '14px', color: 'black' }}>
+              Description
+            </Typography>
+          </Box>
         </Box>
       , overlayRef.current)}
+      <DescriptionDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        displayTitle={displayTitle}
+        onDisplayTitleChange={setDisplayTitle}
+        description={description}
+        onDescriptionChange={setDescription}
+        onSave={() => {
+          const newOptions = { ...currentOptions, displayTitle, description };
+          onDescriptionChange(tempId, { displayTitle, description });
+          setDialogOpen(false);
+          upstashService.updateField(templateId, fieldId, { options: newOptions }).catch((error) => {
+            console.error('Failed to save description:', error);
+            toast.error('Failed to save description');
+          });
+        }}
+      />
     </div>
   );
 };

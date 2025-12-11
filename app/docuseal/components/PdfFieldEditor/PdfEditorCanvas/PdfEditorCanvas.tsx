@@ -1,7 +1,6 @@
 import React from 'react';
 import { Rnd } from 'react-rnd';
 import FieldRenderer from '../../FieldRenderer';
-import { GripVertical } from 'lucide-react';
 import { getFieldClass, measureTextWidth } from '../utils';
 import { partnerColorClasses } from '../partnerColors';
 import { fieldTools } from '../constants';
@@ -26,6 +25,8 @@ interface PdfEditorCanvasProps {
   partners: string[];
   checkRole: boolean;
   hasAccess: boolean;
+  token: string;
+  templateId: number;
   getCurrentToolIcon: (fieldType: string, className?: string) => React.ReactElement;
   getPartnerColorClass: (partner: string) => string;
   handleOverlayMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
@@ -50,7 +51,7 @@ interface PdfEditorCanvasProps {
 const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
     overlayRef,fieldRefs,fields,currentPage,canvasClientWidth,canvasClientHeight,selectedFieldTempId,
     activeTool,resizingColumn,currentHandlePosition,currentRect,editingFieldTempId,inputWidths,
-    showPartnerDropdown,showToolDropdown,partners,checkRole,hasAccess,getCurrentToolIcon,
+    showPartnerDropdown,showToolDropdown,partners,checkRole,hasAccess,token,templateId,getCurrentToolIcon,
     getPartnerColorClass,handleOverlayMouseDown,handleOverlayMouseMove,handleOverlayMouseUp,handleDragStop,
     handleResizeStop,setSelectedFieldTempId,setActiveTool,setOriginalFieldName,
     setEditingFieldTempId,setShowPartnerDropdown,setShowToolDropdown,setResizingColumn,
@@ -222,11 +223,18 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                 )}
                 <GripVerticalMenu
                   tempId={f.tempId}
-                  defaultValue={f.position?.default_value || ''}
-                  onDefaultValueChange={(tempId, value) => updateField(tempId, { position: { ...f.position, default_value: value } })}
+                  fieldId={f.id}
+                  defaultValue={f.options?.defaultValue || ''}
+                  onDefaultValueChange={(tempId, value) => updateField(tempId, { options: { ...f.options, defaultValue: value } })}
                   validation={f.options?.validation || { type: 'none' }}
                   onValidationChange={(tempId, validation) => updateField(tempId, { options: { ...f.options, validation } })}
+                  readOnly={f.options?.readOnly || false}
+                  onReadOnlyChange={(tempId, readOnly) => updateField(tempId, { options: { ...f.options, readOnly } })}
+                  onDescriptionChange={(tempId, desc) => updateField(tempId, { options: { ...f.options, ...desc } })}
                   overlayRef={overlayRef}
+                  token={token}
+                  templateId={templateId}
+                  currentOptions={f.options || {}}
                 />
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteField(f.tempId); }}

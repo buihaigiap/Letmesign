@@ -87,7 +87,9 @@ const PdfFullView: React.FC<PdfFullViewProps> = ({
             return (
               <div
                 key={field.id}
-                className={getFieldClass(field.partner, true, partnerColorClasses)}
+                className={
+                  field?.options?.readOnly ? '' :
+                  getFieldClass(field.partner, true, partnerColorClasses)}
                 style={{
                   position: 'absolute',
                   left: `${field.position.x * 100}%`,

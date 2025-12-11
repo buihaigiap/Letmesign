@@ -185,6 +185,8 @@ const DocumentEditor = forwardRef<any>(function DocumentEditor({ template, token
             partners={partners}
             checkRole={checkRole}
             hasAccess={hasAccess}
+            token={token}
+            templateId={template.id}
             getCurrentToolIcon={getCurrentToolIcon}
             getPartnerColorClass={(partner) => getPartnerColorClass(partner, partners)}
             handleOverlayMouseDown={handleOverlayMouseDown}

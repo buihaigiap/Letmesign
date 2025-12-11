@@ -54,9 +54,12 @@ const FormModal = ({
 }: any) => {
   const currentField = fields[currentFieldIndex];
   const isLastField = currentFieldIndex === fields.length - 1;
-  console.log('fields'   ,fields)
-
   const validateField = (field: TemplateField, value: string): string | null => {
+    // Skip validation for read-only fields
+    if (field.options?.readOnly) {
+      return null;
+    }
+
     // Skip validation for signature and initials fields - they are handled by SignaturePad
     if (field.field_type === 'signature' || field.field_type === 'initials') {
       return null;
@@ -200,6 +203,11 @@ const FormModal = ({
     return null;
   }
 
+  // Skip read-only fields in the modal
+  if (currentField.options?.readOnly) {
+    return null;
+  }
+
   return (
     <Dialog
       open={open}
@@ -238,11 +246,26 @@ const FormModal = ({
           />
         </div>
 
+        {(currentField.options?.displayTitle || currentField.options?.description) && (
+          <div className="mb-4">
+            {currentField.options.displayTitle && (
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                {currentField.options.displayTitle}
+              </Typography>
+            )}
+            {currentField.options.description && (
+              <Typography variant="body2" color="text.secondary">
+                {currentField.options.description}
+              </Typography>
+            )}
+          </div>
+        )}
+
         <div className="mb-6">
           {currentField.field_type === 'date' ? (
             <TextField
               type="date"
-              value={texts[currentField.id] || currentField.position?.default_value || ''}
+              value={texts[currentField.id] !== undefined ? texts[currentField.id] : currentField.options?.defaultValue || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               required={currentField.required}
@@ -444,12 +467,15 @@ const FormModal = ({
           ) : currentField.field_type === 'number' ? (
             <TextField
               type="number"
-              value={texts[currentField.id] || currentField.position?.default_value || ''}
+              value={texts[currentField.id] !== undefined ? texts[currentField.id] : currentField.options?.defaultValue || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               placeholder={`Enter ${currentField.name}`}
               required={currentField.required}
               autoFocus
+              inputProps={{
+                readOnly: currentField.options?.readOnly,
+              }}
             />
           ) : currentField.field_type === 'multiple' ? (
             <div>
@@ -505,7 +531,7 @@ const FormModal = ({
             </FormControl>
           ) : currentField.field_type === 'cells' ? (
             <TextField
-              value={texts[currentField.id] || currentField.position?.default_value || ''}
+              value={texts[currentField.id] !== undefined ? texts[currentField.id] : currentField.options?.defaultValue || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               placeholder={`Enter up to ${currentField.options?.columns || 1} characters`}
@@ -517,12 +543,15 @@ const FormModal = ({
             />
           ) : (
             <TextField
-              value={texts[currentField.id] || currentField.position?.default_value || ''}
+              value={texts[currentField.id] !== undefined ? texts[currentField.id] : currentField.options?.defaultValue || ''}
               onChange={(e) => onTextChange(currentField.id, e.target.value)}
               fullWidth
               placeholder={`Enter ${currentField.name}`}
               required={currentField.required}
               autoFocus
+              inputProps={{
+                readOnly: currentField.options?.readOnly,
+              }}
             />
           )}
         </div>
@@ -555,7 +584,7 @@ const FormModal = ({
         )}
       </DialogContent>
       <DialogActions>
-        {currentFieldIndex > 0 && (
+        {currentFieldIndex > 0 && !fields[currentFieldIndex - 1]?.options?.readOnly && (
           <Button
             disabled={completing}
             onClick={onPrevious}

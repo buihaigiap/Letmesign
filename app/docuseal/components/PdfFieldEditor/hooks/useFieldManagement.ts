@@ -134,7 +134,7 @@ export const useFieldManagement = (
           width: clampedPosition.width * effectivePageWidth,
           height: clampedPosition.height * effectivePageHeight,
           page: clampedPosition.page,
-          ...(field.position?.default_value !== undefined && { default_value: field.position.default_value })
+          ...(field.options?.defaultValue !== undefined && { default_value: field.options.defaultValue })
         } : field.position
       } as NewTemplateField;
     };
@@ -157,8 +157,7 @@ export const useFieldManagement = (
           Math.abs(current.position.y - original.position.y) > 0.01 ||
           Math.abs(current.position.width - original.position.width) > 0.01 ||
           Math.abs(current.position.height - original.position.height) > 0.01 ||
-          current.position.page !== original.position.page ||
-          current.position.default_value !== original.position.default_value;
+          current.position.page !== original.position.page;
         if (posChanged) return true;
       } else if (current.position !== original.position) {
         return true;
