@@ -25,6 +25,13 @@ interface Template {
   user_id: number;
   slug: string;
   updated_at: string;
+  user_name?: string;
+  documents?: { 
+    url: string;
+    filename?: string;
+    content_type?: string;
+    size?: number;
+  }[];
 }
 
 const FolderPage: React.FC = () => {
@@ -37,6 +44,8 @@ const FolderPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState('');
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   
@@ -103,11 +112,16 @@ const FolderPage: React.FC = () => {
       toast.error(error?.error);
     }
   };
-  const fetchData = async () => {
+
+  const handlePageChange = (page: number) => {
+    fetchData(page);
+  };
+  const fetchData = async (page: number = 1) => {
     try {
       setLoading(true);
       const allFolders = await upstashService.getFolders();
-      const folderTemplates = await upstashService.getFolderTemplates(Number(folderId));
+      const folderTemplates = await upstashService.getFolderTemplates(Number(folderId), page, 12);
+      console.log('folderTemplates response:', folderTemplates);
       // Find the current folder in the tree
       const currentFolder = findFolderById(allFolders.data, Number(folderId));
       // Get subfolders: the children of the current folder
@@ -121,8 +135,11 @@ const FolderPage: React.FC = () => {
       } else {
         setParentFolder(null); // root, back to home
       }
-      setTemplates(folderTemplates.data);
+      setTemplates(folderTemplates.data.templates || []);
+      setTotalPages(folderTemplates.data.totalPages || 1);
+      setCurrentPage(page);
     } catch (error) {
+      console.error('Error fetching folder data:', error);
       toast.error('Error fetching folder data');
     } finally {
       setLoading(false);
@@ -200,15 +217,18 @@ const FolderPage: React.FC = () => {
             <div>
                 <TemplatesGrid 
                     templates={templates} 
-                    onRefresh={fetchData} 
-                    currentFolderId={Number(folderId)} />
+                    onRefresh={() => fetchData(currentPage)} 
+                    currentFolderId={Number(folderId)}
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange} />
             </div>
         )}
         <NewTemplateModal
           open={showNewTemplateModal}
           onClose={() => setShowNewTemplateModal(false)}
           folderId={Number(folderId)}
-          onSuccess={fetchData}
+          onSuccess={() => fetchData(currentPage)}
         />
     </Box>
   );

@@ -1331,12 +1331,28 @@ pub async fn get_users_handler(
     }
 }
 
+// Get team members query parameters
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct GetTeamMembersQuery {
+    #[serde(default = "default_page")]
+    pub page: i64,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
+fn default_page() -> i64 { 1 }
+fn default_limit() -> i64 { 12 }
+
 // Get team members invited by the current admin
 #[utoipa::path(
     get,
     path = "/api/admin/members",
+    params(
+        ("page" = i64, Query, description = "Page number (default: 1)"),
+        ("limit" = i64, Query, description = "Items per page (default: 12)")
+    ),
     responses(
-        (status = 200, description = "List of team members", body = Vec<crate::models::user::TeamMember>),
+        (status = 200, description = "List of team members with pagination", body = ApiResponse<serde_json::Value>),
         (status = 401, description = "Unauthorized")
     ),
     tag = "auth"
@@ -1344,8 +1360,17 @@ pub async fn get_users_handler(
 pub async fn get_admin_team_members_handler(
     State(state): State<AppState>,
     axum::Extension(user_id): axum::Extension<i64>,
-) -> (StatusCode, Json<ApiResponse<Vec<crate::models::user::TeamMember>>>) {
+    Query(params): Query<GetTeamMembersQuery>,
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
     let pool = &state.lock().await.db_pool;
+
+    // Validate pagination parameters
+    if params.page < 1 {
+        return ApiResponse::bad_request("Page must be greater than 0".to_string());
+    }
+    if params.limit < 1 || params.limit > 100 {
+        return ApiResponse::bad_request("Limit must be between 1 and 100".to_string());
+    }
 
     // Check if requesting user is admin
     match UserQueries::get_user_by_id(pool, user_id).await {
@@ -1358,11 +1383,27 @@ pub async fn get_admin_team_members_handler(
         _ => return ApiResponse::unauthorized("Invalid user".to_string()),
     }
 
-    // Get all invitations sent by this admin
-    match sqlx::query_as::<_, crate::database::models::DbUserInvitation>(
-        "SELECT * FROM user_invitations WHERE invited_by_user_id = $1 ORDER BY created_at DESC"
+    let offset = (params.page - 1) * params.limit;
+
+    // Get total count
+    let total_count: (i64,) = match sqlx::query_as(
+        "SELECT COUNT(*) FROM user_invitations WHERE invited_by_user_id = $1"
     )
     .bind(user_id)
+    .fetch_one(pool)
+    .await
+    {
+        Ok(count) => count,
+        Err(e) => return ApiResponse::internal_error(format!("Database error: {}", e)),
+    };
+
+    // Get paginated invitations
+    match sqlx::query_as::<_, crate::database::models::DbUserInvitation>(
+        "SELECT * FROM user_invitations WHERE invited_by_user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
+    )
+    .bind(user_id)
+    .bind(params.limit)
+    .bind(offset)
     .fetch_all(pool)
     .await
     {
@@ -1384,7 +1425,20 @@ pub async fn get_admin_team_members_handler(
                     created_at: inv.created_at,
                 });
             }
-            ApiResponse::success(team_members, "Team members retrieved successfully".to_string())
+
+            let total_pages = ((total_count.0 as f64) / (params.limit as f64)).ceil() as i64;
+
+            let response_data = serde_json::json!({
+                "members": team_members,
+                "pagination": {
+                    "page": params.page,
+                    "limit": params.limit,
+                    "total": total_count.0,
+                    "totalPages": total_pages
+                }
+            });
+
+            ApiResponse::success(response_data, "Team members retrieved successfully".to_string())
         }
         Err(e) => ApiResponse::internal_error(format!("Database error: {}", e)),
     }

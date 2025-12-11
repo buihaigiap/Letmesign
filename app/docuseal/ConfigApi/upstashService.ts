@@ -168,8 +168,11 @@ const upstashService = {
         const url = '/api/folders';
         return await axiosClient.get(url)
     },
-    getFolderTemplates: async (folderId: number): Promise<any> => {
-        const url = `/api/folders/${folderId}/templates`;
+    getFolderTemplates: async (folderId: number, page?: number, limit?: number): Promise<any> => {
+        const params = new URLSearchParams();
+        if (page) params.append('page', page.toString());
+        if (limit) params.append('limit', limit.toString());
+        const url = `/api/folders/${folderId}/templates${params.toString() ? '?' + params.toString() : ''}`;
         return await axiosClient.get(url)
     },
     moveTemplate: async (data: any): Promise<any> => {
@@ -205,8 +208,11 @@ const upstashService = {
         const url = '/api/auth/activate';
         return await axiosClient.post(url, data)
     },
-    getUserAccounts : async (): Promise<any> => {
-        const url = '/api/admin/members';
+    getUserAccounts : async (page?: number, limit?: number): Promise<any> => {
+        const params = new URLSearchParams();
+        if (page) params.append('page', page.toString());
+        if (limit) params.append('limit', limit.toString());
+        const url = `/api/admin/members${params.toString() ? '?' + params.toString() : ''}`;
         return await axiosClient.get(url)
     },
 

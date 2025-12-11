@@ -1278,6 +1278,101 @@ impl TemplateFolderQueries {
         }
         Ok(templates)
     }
+
+    // Get templates in a specific folder with pagination that are accessible by team members
+    pub async fn get_team_templates_in_folder_with_pagination(pool: &PgPool, user_id: i64, folder_id: i64, offset: i64, limit: i64) -> Result<Vec<DbTemplate>, sqlx::Error> {
+        // Get user's account_id
+        let account_id_result = sqlx::query("SELECT account_id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let account_id: Option<i64> = account_id_result.try_get("account_id")?;
+
+        // If user has account_id, get all templates in that account and folder
+        // Otherwise, only get user's own templates in that folder
+        let query_str = if account_id.is_some() {
+            "SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
+             FROM templates 
+             WHERE account_id = $1 AND folder_id = $2
+             ORDER BY created_at DESC
+             LIMIT $3 OFFSET $4"
+        } else {
+            "SELECT id, name, slug, user_id, account_id, folder_id, documents, created_at, updated_at 
+             FROM templates 
+             WHERE user_id = $1 AND folder_id = $2
+             ORDER BY created_at DESC
+             LIMIT $3 OFFSET $4"
+        };
+
+        let rows = if let Some(acc_id) = account_id {
+            sqlx::query(query_str)
+                .bind(acc_id)
+                .bind(folder_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pool)
+                .await?
+        } else {
+            sqlx::query(query_str)
+                .bind(user_id)
+                .bind(folder_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pool)
+                .await?
+        };
+
+        let mut templates = Vec::new();
+        for row in rows {
+            templates.push(DbTemplate {
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                slug: row.try_get("slug")?,
+                user_id: row.try_get("user_id")?,
+                account_id: row.try_get("account_id")?,
+                folder_id: row.try_get("folder_id")?,
+                documents: row.try_get("documents")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            });
+        }
+        Ok(templates)
+    }
+
+    // Get count of templates in a specific folder that are accessible by team members
+    pub async fn get_team_templates_in_folder_count(pool: &PgPool, user_id: i64, folder_id: i64) -> Result<i64, sqlx::Error> {
+        // Get user's account_id
+        let account_id_result = sqlx::query("SELECT account_id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let account_id: Option<i64> = account_id_result.try_get("account_id")?;
+
+        // If user has account_id, count all templates in that account and folder
+        // Otherwise, only count user's own templates in that folder
+        let query_str = if account_id.is_some() {
+            "SELECT COUNT(*) as count FROM templates WHERE account_id = $1 AND folder_id = $2"
+        } else {
+            "SELECT COUNT(*) as count FROM templates WHERE user_id = $1 AND folder_id = $2"
+        };
+
+        let row = if let Some(acc_id) = account_id {
+            sqlx::query(query_str)
+                .bind(acc_id)
+                .bind(folder_id)
+                .fetch_one(pool)
+                .await?
+        } else {
+            sqlx::query(query_str)
+                .bind(user_id)
+                .bind(folder_id)
+                .fetch_one(pool)
+                .await?
+        };
+
+        let count: i64 = row.try_get("count")?;
+        Ok(count)
+    }
 }
 
 impl TemplateFieldQueries {

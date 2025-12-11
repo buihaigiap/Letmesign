@@ -57,17 +57,44 @@ pub async fn create_submission(
 
     let pool = &state.lock().await.db_pool;
 
-    // Check if user can submit (usage limit check)
-    match can_user_submit(pool, user_id).await {
-        Ok(false) => {
-            return ApiResponse::forbidden("You have reached the free email sending limit (10 emails). Please upgrade to the Premium plan to continue sending documents.".to_string());
+    // Check usage limits considering the number of emails being sent
+    let emails_to_send = payload.submitters.len() as i32;
+    match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
+        Ok(Some(user)) => {
+            match user.subscription_status.as_str() {
+                "premium" => {
+                    if let Some(expires_at) = user.subscription_expires_at {
+                        if expires_at <= chrono::Utc::now() {
+                            return ApiResponse::forbidden("Your premium subscription has expired. Please renew to continue sending documents.".to_string());
+                        }
+                    } else {
+                        return ApiResponse::forbidden("Invalid premium subscription. Please contact support.".to_string());
+                    }
+                },
+                "free" => {
+                    let current_usage = user.free_usage_count;
+                    let remaining_sends = 10 - current_usage;
+                    
+                    if current_usage >= 10 {
+                        return ApiResponse::forbidden("You have reached the free email sending limit (10 emails). Please upgrade to the Premium plan to continue sending documents.".to_string());
+                    }
+                    
+                    if current_usage + emails_to_send > 10 {
+                        return ApiResponse::forbidden(format!("You are trying to send {} emails, but you only have {} free sends remaining. Please upgrade to the Premium plan to send more emails.", emails_to_send, remaining_sends));
+                    }
+                    
+                    // Show warning if this will use up remaining free sends
+                    if current_usage + emails_to_send == 10 {
+                        // This is allowed but we could add a warning header or modify the response
+                        // For now, we'll allow it but the frontend can check the usage
+                    }
+                },
+                _ => {
+                    return ApiResponse::forbidden("Invalid subscription status. Please contact support.".to_string());
+                }
+            }
         },
-        Err(e) => {
-            return ApiResponse::internal_error(format!("Failed to check usage limits: {}", e));
-        },
-        Ok(true) => {
-            // User can submit, continue
-        }
+        _ => return ApiResponse::forbidden("User not found".to_string()),
     }
 
     // Check if template exists

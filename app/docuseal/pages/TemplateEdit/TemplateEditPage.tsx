@@ -74,6 +74,7 @@ const TemplateEditPage = () => {
   const { user } = useAuth();
   const [completionDrawerOpen, setCompletionDrawerOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [completionSignatures, setCompletionSignatures] = useState<any[]>([]);
 
   // Use custom hook for file upload/delete
   const { uploading: fileUploading, progress, uploadFile, deleteFile } = useFileUpload();
@@ -325,6 +326,18 @@ const TemplateEditPage = () => {
       if (data.success) {
         toast.success(data?.message);
         setPendingUploads({});
+        // Update signatures from server response
+        if (data.data.bulk_signatures) {
+          const updatedSignatures = data.data.bulk_signatures.map((sig: any) => {
+            const field = fields.find(f => f.id === sig.field_id);
+            return {
+              field_id: sig.field_id,
+              signature_value: sig.signature_value,
+              field_info: field
+            };
+          });
+          setCompletionSignatures(updatedSignatures);
+        }
         // Open completion drawer
         setDeclineModalOpen(false);
         setCompletionDrawerOpen(true);
@@ -403,6 +416,18 @@ const TemplateEditPage = () => {
 
       if (data.success) {
         toast.success('Document declined successfully');
+        // Update signatures from server response if available
+        if (data.data.bulk_signatures) {
+          const updatedSignatures = data.data.bulk_signatures.map((sig: any) => {
+            const field = fields.find(f => f.id === sig.field_id);
+            return {
+              field_id: sig.field_id,
+              signature_value: sig.signature_value,
+              field_info: field
+            };
+          });
+          setCompletionSignatures(updatedSignatures);
+        }
         // navigate(`/templates/${templateInfo?.id}`);
         setCompletionDrawerOpen(true);
         setIsModalOpen(false);
@@ -555,7 +580,7 @@ const TemplateEditPage = () => {
       <CompletionDrawer
         open={completionDrawerOpen}
         pdfUrl={templateInfo?.document.url || ''}
-        signatures={fields.map(field => ({
+        signatures={completionSignatures.length > 0 ? completionSignatures : fields.map(field => ({
           field_id: field.id,
           signature_value: texts[field.id] || '',
           field_info: field

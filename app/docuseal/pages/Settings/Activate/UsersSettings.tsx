@@ -4,6 +4,7 @@ import CreateTemplateButton from '@/components/CreateTemplateButton';
 import upstashService from '../../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 import { PenLine, Trash } from 'lucide-react';
+import Pagination from '../../../components/Pagination';
 
 const UsersSettings = () => {
   const [open, setOpen] = useState(false);
@@ -13,12 +14,19 @@ const UsersSettings = () => {
   const [fetchLoading, setFetchLoading] = useState(true);
   const [editingUser, setEditingUser] = useState(null);
   const roles = ['admin', 'editor', 'member', 'agent', 'viewer'];
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const response = await upstashService.getUserAccounts();
-        setUsers(response.data);
+        const response = await upstashService.getUserAccounts(currentPage, 12);
+        if (response.success) {
+          setUsers(response.data.members || []);
+          setTotalPages(response.data.pagination?.totalPages || 1);
+        } else {
+          toast.error('Failed to fetch users');
+        }
       } catch (err) {
         toast.error('Failed to fetch users');
       } finally {
@@ -26,7 +34,7 @@ const UsersSettings = () => {
       }
     };
     fetchUsers();
-  }, []);
+  }, [currentPage]);
 
   const tableColumns = ['Name', 'Email', 'Role', 'Status', 'Actions'];
   const tableKeys = ['name', 'email', 'role', 'status'];
@@ -41,6 +49,10 @@ const UsersSettings = () => {
     setEditingUser(null);
   };
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
   const handleEdit = (user: any) => {
     setFormData({ name: user.name, email: user.email, role: user.role });
     setEditingUser(user);
@@ -53,10 +65,15 @@ const UsersSettings = () => {
       const response = await upstashService.deleteTeam(user.id);
       if (response.success) {
         toast.success('User deleted successfully');
-        // Refetch users
-        const fetchResponse = await upstashService.getUserAccounts();
+        // Refetch current page
+        const fetchResponse = await upstashService.getUserAccounts(currentPage, 12);
         if (fetchResponse.success) {
-          setUsers(fetchResponse.data);
+          setUsers(fetchResponse.data.members || []);
+          setTotalPages(fetchResponse.data.pagination?.totalPages || 1);
+          // If current page is now empty and not the first page, go to previous page
+          if ((fetchResponse.data.members || []).length === 0 && currentPage > 1) {
+            setCurrentPage(currentPage - 1);
+          }
         }
       } else {
         toast.error(response.message || 'Failed to delete user');
@@ -100,10 +117,11 @@ const UsersSettings = () => {
       if (response.success) {
         const emailChanged = editingUser && editingUser.email !== formData.email.trim();
         toast.success(editingUser ? (emailChanged ? 'User updated and invitation email resent' : 'User updated successfully') : 'User added successfully');
-        // Refetch users
-        const fetchResponse = await upstashService.getUserAccounts();
+        // Refetch current page
+        const fetchResponse = await upstashService.getUserAccounts(currentPage, 12);
         if (fetchResponse.success) {
-          setUsers(fetchResponse.data);
+          setUsers(fetchResponse.data.members || []);
+          setTotalPages(fetchResponse.data.pagination?.totalPages || 1);
         }
         handleClose();
       } 
@@ -165,7 +183,7 @@ const UsersSettings = () => {
                     </TableCell>
                   ))}
                   <TableCell sx={{ color: 'white' }}>
-                    {user.status === 'pending' && user.id && (
+                    {user.id && (
                       <>
                         <Button onClick={() => handleEdit(user)} sx={{ minWidth: 'auto', p: 1  , color: 'white' }}>
                           <PenLine size={16} />
@@ -182,6 +200,12 @@ const UsersSettings = () => {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={handlePageChange}
+      />
 
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle>{editingUser ? 'Edit User' : 'Add New User'}</DialogTitle>

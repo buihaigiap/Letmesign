@@ -55,7 +55,9 @@ const ForgotPasswordForm: React.FC = () => {
            
             if (data.success) {
                 setSuccess('Password has been reset successfully! Redirecting to login page...');
-                setTimeout(() => navigate('/login'), 2000);
+                setResetCode ('');
+                setNewPassword('');
+                navigate('/login')
             } else {
                 setError(data.message || 'Password reset failed');
             }

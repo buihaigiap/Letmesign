@@ -83,6 +83,12 @@ pub struct GetTemplatesQuery {
     pub search: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct GetFolderTemplatesQuery {
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
+}
+
 #[utoipa::path(
     get,
     path = "/api/templates/{id}/full-info",
@@ -833,12 +839,14 @@ pub async fn delete_folder(
     get,
     path = "/api/folders/{id}/templates",
     params(
-        ("id" = i64, Path, description = "Folder ID")
+        ("id" = i64, Path, description = "Folder ID"),
+        ("page" = Option<i64>, Query, description = "Page number (1-based)"),
+        ("limit" = Option<i64>, Query, description = "Number of items per page")
     ),
     responses(
-        (status = 200, description = "Templates in folder retrieved successfully", body = ApiResponse<Vec<Template>>),
-        (status = 404, description = "Folder not found", body = ApiResponse<Vec<Template>>),
-        (status = 500, description = "Internal server error", body = ApiResponse<Vec<Template>>)
+        (status = 200, description = "Templates in folder retrieved successfully", body = ApiResponse<serde_json::Value>),
+        (status = 404, description = "Folder not found", body = ApiResponse<serde_json::Value>),
+        (status = 500, description = "Internal server error", body = ApiResponse<serde_json::Value>)
     ),
     security(("bearer_auth" = [])),
     tag = "folders"
@@ -846,9 +854,14 @@ pub async fn delete_folder(
 pub async fn get_folder_templates(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(params): Query<GetFolderTemplatesQuery>,
     Extension(user_id): Extension<i64>,
-) -> (StatusCode, Json<ApiResponse<Vec<Template>>>) {
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
     let pool = &state.lock().await.db_pool;
+
+    let page = params.page.unwrap_or(1).max(1);
+    let limit = params.limit.unwrap_or(12).max(1).min(100); // Max 100 per page
+    let offset = (page - 1) * limit;
 
     // Verify folder exists and user has permission
     match TemplateFolderQueries::get_folder_by_id(pool, id).await {
@@ -867,8 +880,8 @@ pub async fn get_folder_templates(
                 _ => return ApiResponse::forbidden("User not found".to_string()),
             }
 
-            // Get templates in this folder
-            match TemplateFolderQueries::get_team_templates_in_folder(pool, user_id, id).await {
+            // Get templates in this folder with pagination
+            match TemplateFolderQueries::get_team_templates_in_folder_with_pagination(pool, user_id, id, offset, limit).await {
                 Ok(db_templates) => {
                     let mut templates = Vec::new();
                     for db_template in db_templates {
@@ -895,7 +908,21 @@ pub async fn get_folder_templates(
                         
                         templates.push(template);
                     }
-                    ApiResponse::success(templates, "Templates retrieved successfully".to_string())
+
+                    // Get total count
+                    match TemplateFolderQueries::get_team_templates_in_folder_count(pool, user_id, id).await {
+                        Ok(total) => {
+                            let response = serde_json::json!({
+                                "templates": templates,
+                                "total": total,
+                                "page": page,
+                                "limit": limit,
+                                "total_pages": ((total as f64) / (limit as f64)).ceil() as i64
+                            });
+                            ApiResponse::success(response, "Templates retrieved successfully".to_string())
+                        }
+                        Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
+                    }
                 }
                 Err(e) => ApiResponse::internal_error(format!("Failed to get templates: {}", e)),
             }
