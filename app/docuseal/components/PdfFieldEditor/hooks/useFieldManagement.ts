@@ -69,6 +69,14 @@ export const useFieldManagement = (
     setFields(prev => [...prev, duplicatedField]);
   };
 
+  const copyToAllPages = (tempId: string, numPages: number) => {
+    const field = fields.find(f => f.tempId === tempId);
+    if (!field || !field.position) return;
+
+    // Make the field appear on all pages by setting page to null
+    updateField(tempId, { position: { ...field.position, page: null } });
+  };
+
   const handleSaveClick = async () => {
     if (!token) return;
 
@@ -279,6 +287,7 @@ export const useFieldManagement = (
     updateField,
     deleteField,
     duplicateField,
+    copyToAllPages,
     handleSaveClick,
     initialFieldsLengthRef
   };

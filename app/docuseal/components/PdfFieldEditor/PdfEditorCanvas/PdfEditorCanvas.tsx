@@ -45,6 +45,8 @@ interface PdfEditorCanvasProps {
   updateField: (tempId: string, updates: any) => void;
   deleteField: (tempId: string) => void;
   duplicateField: (tempId: string) => void;
+  copyToAllPages: (tempId: string, numPages: number) => void;
+  numPages: number;
   originalFieldName: string;
 }
 
@@ -55,7 +57,7 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
     getPartnerColorClass,handleOverlayMouseDown,handleOverlayMouseMove,handleOverlayMouseUp,handleDragStop,
     handleResizeStop,setSelectedFieldTempId,setActiveTool,setOriginalFieldName,
     setEditingFieldTempId,setShowPartnerDropdown,setShowToolDropdown,setResizingColumn,
-    updateField,deleteField,duplicateField,originalFieldName,
+    updateField,deleteField,duplicateField,copyToAllPages,numPages,originalFieldName,
     setInputWidths
 }) => {
   const updateInputWidth = (tempId: string, text: string) => {
@@ -93,7 +95,7 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
       onMouseUp={handleOverlayMouseUp}
       style={{ cursor: activeTool !== 'cursor' ? 'crosshair' : 'default' }}
     >
-      {fields.filter(f => f.position?.page === currentPage).map(f => {
+      {fields.filter(f => f.position?.page === currentPage || f.position?.page == null).map(f => {
         const isSelected = selectedFieldTempId === f.tempId;
 
         return (
@@ -235,6 +237,8 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                   token={token}
                   templateId={templateId}
                   currentOptions={f.options || {}}
+                  copyToAllPages={copyToAllPages}
+                  numPages={numPages}
                 />
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteField(f.tempId); }}

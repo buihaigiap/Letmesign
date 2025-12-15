@@ -27,6 +27,7 @@ const DocumentEditor = forwardRef<any>(function DocumentEditor({ template, token
   const [pageHeight, setPageHeight] = useState(0);
   const [canvasClientWidth, setCanvasClientWidth] = useState(0);
   const [canvasClientHeight, setCanvasClientHeight] = useState(0);
+  const [numPages, setNumPages] = useState(1);
   const [isPdfLoaded, setIsPdfLoaded] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [globalSettings, setGlobalSettings] = useState<any>(null);
@@ -59,7 +60,7 @@ const DocumentEditor = forwardRef<any>(function DocumentEditor({ template, token
     prevPartnersRef.current = partners;
   }, [partners]);
   // Custom hooks
-  const { updateField, deleteField, duplicateField, handleSaveClick } = useFieldManagement(
+  const { updateField, deleteField, duplicateField, copyToAllPages, handleSaveClick } = useFieldManagement(
     fields,setFields,originalFields,setOriginalFields,deletedIds,
     setDeletedIds,pageWidth,pageHeight,partners,token,template.id
   );
@@ -158,10 +159,13 @@ const DocumentEditor = forwardRef<any>(function DocumentEditor({ template, token
             const pageH = pdfDisplayRef.current?.getPageHeight() || 0;
             const canvasW = pdfDisplayRef.current?.getCanvasClientWidth() || 0;
             const canvasH = pdfDisplayRef.current?.getCanvasClientHeight() || 0;
+            const docState = pdfDisplayRef.current?.getDocState();
+            const totalPages = docState?.type === 'images' ? docState.numPages : 1;
             setPageWidth(pageW);
             setPageHeight(pageH);
             setCanvasClientWidth(canvasW);
             setCanvasClientHeight(canvasH);
+            setNumPages(totalPages);
             setIsPdfLoaded(true);
           }}
           globalSettings={globalSettings}
@@ -205,6 +209,8 @@ const DocumentEditor = forwardRef<any>(function DocumentEditor({ template, token
             updateField={updateField}
             deleteField={deleteField}
             duplicateField={duplicateField}
+            copyToAllPages={copyToAllPages}
+            numPages={numPages}
             originalFieldName={originalFieldName}
           />
         </PdfDisplay>

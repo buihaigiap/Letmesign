@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { CircleAlert, GripVertical } from 'lucide-react';
+import { CircleAlert, GripVertical , Copy } from 'lucide-react';
 import {
   Box,
   Select,
@@ -36,6 +36,8 @@ interface GripVerticalMenuProps {
   token: string;
   templateId: number;
   currentOptions?: any;
+  copyToAllPages: (tempId: string, numPages: number) => void;
+  numPages: number;
 }
 
 const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
@@ -52,6 +54,8 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   token,
   templateId,
   currentOptions = {},
+  copyToAllPages,
+  numPages,
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const [localDefaultValue, setLocalDefaultValue] = React.useState(defaultValue);
@@ -401,7 +405,6 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
               },
             }}
           />
-
           <Box onClick={(e) => {
             e.stopPropagation();
             setDisplayTitle(currentOptions?.displayTitle || '');
@@ -413,6 +416,27 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             <Typography sx={{ fontSize: '14px', color: 'black' }}>
               Description
             </Typography>
+          </Box>
+          <Box 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (numPages > 1) {
+                  copyToAllPages(tempId, numPages);
+                  setShowMenu(false);
+                  toast.success('Field copied to all pages');
+                }
+              }}
+              sx={{ 
+                cursor: numPages > 1 ? 'pointer' : 'not-allowed', 
+                display: 'flex', 
+                alignItems: 'center',
+                opacity: numPages > 1 ? 1 : 0.5
+              }}
+          >
+              <Copy color='black' style={{ marginRight: 8 }} />
+              <Typography sx={{ fontSize: '14px', color: 'black' }}>
+                Copy to All Pages
+              </Typography>
           </Box>
         </Box>
       , overlayRef.current)}
