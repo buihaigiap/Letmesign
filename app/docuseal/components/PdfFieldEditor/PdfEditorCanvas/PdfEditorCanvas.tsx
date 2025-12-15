@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Rnd } from 'react-rnd';
 import FieldRenderer from '../../FieldRenderer';
 import { getFieldClass, measureTextWidth } from '../utils';
@@ -64,6 +64,8 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
     const width = measureTextWidth(text, '12px') + 16;
     setInputWidths(prev => ({ ...prev, [tempId]: Math.max(width, 24) }));
   };
+
+  const allFields = useMemo(() => fields.map(field => ({ tempId: field.tempId, label: field.name || `Field ${field.tempId}` })), [fields]);
 
   // Don't render fields until canvas dimensions are ready
   if (!canvasClientWidth || !canvasClientHeight) {
@@ -233,12 +235,14 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                   readOnly={f.options?.readOnly || false}
                   onReadOnlyChange={(tempId, readOnly) => updateField(tempId, { options: { ...f.options, readOnly } })}
                   onDescriptionChange={(tempId, desc) => updateField(tempId, { options: { ...f.options, ...desc } })}
+                  onConditionChange={(tempId, condition) => updateField(tempId, { options: { ...f.options, condition } })}
                   overlayRef={overlayRef}
                   token={token}
                   templateId={templateId}
                   currentOptions={f.options || {}}
                   copyToAllPages={copyToAllPages}
                   numPages={numPages}
+                  allFields={allFields}
                 />
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteField(f.tempId); }}

@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { CircleAlert, GripVertical , Copy } from 'lucide-react';
+import { CircleAlert, GripVertical , Copy , Move3d } from 'lucide-react';
 import {
   Box,
   Select,
@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import DescriptionDialog from './DescriptionDialog';
+import ConditionDialog from './ConditionDialog';
 import upstashService from '../../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
 
@@ -32,12 +33,14 @@ interface GripVerticalMenuProps {
   readOnly?: boolean;
   onReadOnlyChange: (tempId: string, readOnly: boolean) => void;
   onDescriptionChange: (tempId: string, desc: { displayTitle: string, description: string }) => void;
+  onConditionChange: (tempId: string, condition: { dependentField: string, condition: string }) => void;
   overlayRef: React.RefObject<HTMLDivElement>;
   token: string;
   templateId: number;
   currentOptions?: any;
   copyToAllPages: (tempId: string, numPages: number) => void;
   numPages: number;
+  allFields: Array<{ tempId: string; label: string }>;
 }
 
 const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
@@ -50,12 +53,14 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   readOnly = false,
   onReadOnlyChange,
   onDescriptionChange,
+  onConditionChange,
   overlayRef,
   token,
   templateId,
   currentOptions = {},
   copyToAllPages,
   numPages,
+  allFields,
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const [localDefaultValue, setLocalDefaultValue] = React.useState(defaultValue);
@@ -71,6 +76,9 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [description, setDescription] = React.useState('');
   const [displayTitle, setDisplayTitle] = React.useState('');
+  const [conditionDialogOpen, setConditionDialogOpen] = React.useState(false);
+  const [dependentField, setDependentField] = React.useState('');
+  const [conditionType, setConditionType] = React.useState('not_empty');
 
   React.useEffect(() => {
     setLocalDefaultValue(defaultValue);
@@ -89,8 +97,13 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   }, [readOnly]);
 
   React.useEffect(() => {
+    setDependentField(currentOptions?.condition?.dependentField || '');
+    setConditionType(currentOptions?.condition?.condition || 'not_empty');
+  }, [currentOptions]);
+
+  React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (selectOpen || dialogOpen) return;
+      if (selectOpen || dialogOpen || conditionDialogOpen) return;
       if (
         menuRef.current &&
         !menuRef.current.contains(event.target as Node) &&
@@ -108,7 +121,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showMenu, selectOpen, dialogOpen]);
+  }, [showMenu, selectOpen, dialogOpen, conditionDialogOpen]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -438,6 +451,17 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
                 Copy to All Pages
               </Typography>
           </Box>
+          <Box onClick={(e) => {
+            e.stopPropagation();
+            setConditionDialogOpen(true);
+            setShowMenu(false);
+          }} sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <Move3d color='black' style={{ marginRight: 8 }} />
+            <Typography sx={{ fontSize: '14px', color: 'black' }}>
+              Condition
+            </Typography>
+          </Box>
+
         </Box>
       , overlayRef.current)}
       <DescriptionDialog
@@ -454,6 +478,25 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
           upstashService.updateField(templateId, fieldId, { options: newOptions }).catch((error) => {
             console.error('Failed to save description:', error);
             toast.error('Failed to save description');
+          });
+        }}
+      />
+      <ConditionDialog
+        open={conditionDialogOpen}
+        onClose={() => setConditionDialogOpen(false)}
+        dependentField={dependentField}
+        onDependentFieldChange={setDependentField}
+        condition={conditionType}
+        onConditionChange={setConditionType}
+        allFields={allFields}
+        currentTempId={tempId}
+        onSave={() => {
+          const newOptions = { ...currentOptions, condition: { dependentField, condition: conditionType } };
+          onConditionChange(tempId, { dependentField, condition: conditionType });
+          setConditionDialogOpen(false);
+          upstashService.updateField(templateId, fieldId, { options: newOptions }).catch((error) => {
+            console.error('Failed to save condition:', error);
+            toast.error('Failed to save condition');
           });
         }}
       />
