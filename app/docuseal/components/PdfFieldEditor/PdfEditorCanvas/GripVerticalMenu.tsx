@@ -20,6 +20,7 @@ import toast from 'react-hot-toast';
 interface GripVerticalMenuProps {
   tempId: string;
   fieldId: number;
+  fieldType: string;
   defaultValue?: string;
   onDefaultValueChange: (tempId: string, value: string) => void;
   validation?: {
@@ -46,6 +47,7 @@ interface GripVerticalMenuProps {
 const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   tempId,
   fieldId,
+  fieldType,
   defaultValue = '',
   onDefaultValueChange,
   validation = { type: 'none' },
@@ -97,9 +99,11 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   }, [readOnly]);
 
   React.useEffect(() => {
-    setDependentField(currentOptions?.condition?.dependentField || '');
-    setConditionType(currentOptions?.condition?.condition || 'not_empty');
-  }, [currentOptions]);
+    if (conditionDialogOpen) {
+      setDependentField(currentOptions?.condition?.dependentField || '');
+      setConditionType(currentOptions?.condition?.condition || 'not_empty');
+    }
+  }, [conditionDialogOpen]);
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -229,20 +233,24 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
           }}
         >
 
-          {/* Default value */}
-          <TextField
-            variant="outlined"
-            size="small"
-            placeholder="Default value"
-            value={localDefaultValue}
-            onChange={(e) => handleDefaultValueChange(e.target.value)}
-            onBlur={handleMenuClose}
-            onKeyDown={handleDefaultValueKeyDown}
-            onClick={(e) => e.stopPropagation()}
-            sx={inputStyle}
-          />
+          {/* Default value - hide for image, multiple, signature, initials, and file */}
+          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && (
+            <TextField
+              variant="outlined"
+              size="small"
+              placeholder="Default value"
+              value={localDefaultValue}
+              onChange={(e) => handleDefaultValueChange(e.target.value)}
+              onBlur={handleMenuClose}
+              onKeyDown={handleDefaultValueKeyDown}
+              onClick={(e) => e.stopPropagation()}
+              sx={inputStyle}
+            />
+          )}
 
-          {/* Validation select */}
+          {/* Validation select - hide for image, multiple, signature, initials, and file */}
+          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && (
+          <>
           <FormControl fullWidth>
             <InputLabel
               sx={{
@@ -390,6 +398,13 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
               />
             </Box>
           )}
+          </>
+          )}
+
+          {/* Read-Only - hide for image, multiple, signature, initials, and file */}
+          {fieldType !== 'image' && fieldType !== 'multiple' &&
+           fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' &&
+            (
           <FormControlLabel
             control={
               <Switch
@@ -418,6 +433,9 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
               },
             }}
           />
+          )}
+
+          {/* Description - always show */}
           <Box onClick={(e) => {
             e.stopPropagation();
             setDisplayTitle(currentOptions?.displayTitle || '');
@@ -430,6 +448,9 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
               Description
             </Typography>
           </Box>
+
+          {/* Copy to All Pages - hide for image, multiple, and file */}
+          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'file' && (
           <Box 
               onClick={(e) => {
                 e.stopPropagation();
@@ -451,17 +472,21 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
                 Copy to All Pages
               </Typography>
           </Box>
-          <Box onClick={(e) => {
-            e.stopPropagation();
-            setConditionDialogOpen(true);
-            setShowMenu(false);
-          }} sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-            <Move3d color='black' style={{ marginRight: 8 }} />
-            <Typography sx={{ fontSize: '14px', color: 'black' }}>
-              Condition
-            </Typography>
-          </Box>
+          )}
 
+          {/* Condition - always show */}
+          {allFields.length > 0 && allFields[0].tempId !== tempId && (
+            <Box onClick={(e) => {
+              e.stopPropagation();
+              setConditionDialogOpen(true);
+              setShowMenu(false);
+            }} sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <Move3d color='black' style={{ marginRight: 8 }} />
+              <Typography sx={{ fontSize: '14px', color: 'black' }}>
+                Condition
+              </Typography>
+            </Box>
+          )}
         </Box>
       , overlayRef.current)}
       <DescriptionDialog
@@ -491,13 +516,14 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
         allFields={allFields}
         currentTempId={tempId}
         onSave={() => {
-          const newOptions = { ...currentOptions, condition: { dependentField, condition: conditionType } };
-          onConditionChange(tempId, { dependentField, condition: conditionType });
-          setConditionDialogOpen(false);
-          upstashService.updateField(templateId, fieldId, { options: newOptions }).catch((error) => {
-            console.error('Failed to save condition:', error);
-            toast.error('Failed to save condition');
+          // Convert tempId to field name before saving
+          const depField = allFields.find(f => f.tempId === dependentField);
+          const fieldIdentifier = depField ? depField.label : dependentField;
+          onConditionChange(tempId, { 
+            dependentField: fieldIdentifier, 
+            condition: conditionType 
           });
+          setConditionDialogOpen(false);
         }}
       />
     </div>

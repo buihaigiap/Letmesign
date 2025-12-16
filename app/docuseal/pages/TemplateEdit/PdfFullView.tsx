@@ -84,6 +84,40 @@ const PdfFullView: React.FC<PdfFullViewProps> = ({
               return null;
             }
             
+            // Check condition to hide field
+            if (field.options?.condition) {
+              const { dependentField, condition } = field.options.condition;
+              
+              if (dependentField) {
+                // Find dependent field by name
+                let depField = fields.find(f => f.name === dependentField);
+                
+                // If not found by name, try by id (format: "field-123")
+                if (!depField && dependentField.startsWith('field-')) {
+                  const fieldIdNum = parseInt(dependentField.replace('field-', ''));
+                  if (!isNaN(fieldIdNum)) {
+                    depField = fields.find(f => f.id === fieldIdNum);
+                  }
+                }
+                
+                if (depField) {
+                  const depFieldValue = texts[depField.id] || '';
+                  
+                  if (condition === 'not_empty') {
+                    // Hide if dependent field is empty
+                    if (!depFieldValue || depFieldValue === '') {
+                      return null;
+                    }
+                  } else if (condition === 'empty') {
+                    // Hide if dependent field is not empty
+                    if (depFieldValue && depFieldValue !== '') {
+                      return null;
+                    }
+                  }
+                }
+              }
+            }
+            
             return (
               <div
                 key={field.id}

@@ -97,7 +97,10 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
       onMouseUp={handleOverlayMouseUp}
       style={{ cursor: activeTool !== 'cursor' ? 'crosshair' : 'default' }}
     >
-      {fields.filter(f => f.position?.page === currentPage || f.position?.page == null).map(f => {
+      {fields.filter(f => {
+        const matches = f.position?.page === currentPage || f.position?.page == null;
+        return matches;
+      }).map(f => {
         const isSelected = selectedFieldTempId === f.tempId;
 
         return (
@@ -228,6 +231,7 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                 <GripVerticalMenu
                   tempId={f.tempId}
                   fieldId={f.id}
+                  fieldType={f.field_type}
                   defaultValue={f.options?.defaultValue || ''}
                   onDefaultValueChange={(tempId, value) => updateField(tempId, { options: { ...f.options, defaultValue: value } })}
                   validation={f.options?.validation || { type: 'none' }}
@@ -235,7 +239,9 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                   readOnly={f.options?.readOnly || false}
                   onReadOnlyChange={(tempId, readOnly) => updateField(tempId, { options: { ...f.options, readOnly } })}
                   onDescriptionChange={(tempId, desc) => updateField(tempId, { options: { ...f.options, ...desc } })}
-                  onConditionChange={(tempId, condition) => updateField(tempId, { options: { ...f.options, condition } })}
+                  onConditionChange={(tempId, condition) => {
+                    updateField(tempId, { options: { ...f.options, condition } });
+                  }}
                   overlayRef={overlayRef}
                   token={token}
                   templateId={templateId}

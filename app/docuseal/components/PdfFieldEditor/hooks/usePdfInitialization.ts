@@ -87,7 +87,6 @@ export const usePdfInitialization = (
             width: f.position.width / pageW,
             height: f.position.height / pageH
           };
-          console.log('Converted original position for field', f.name, 'from pixels to decimal:', f.position, '->', position);
         }
       }
       

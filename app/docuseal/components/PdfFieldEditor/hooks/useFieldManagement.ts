@@ -73,8 +73,31 @@ export const useFieldManagement = (
     const field = fields.find(f => f.tempId === tempId);
     if (!field || !field.position) return;
 
-    // Make the field appear on all pages by setting page to null
-    updateField(tempId, { position: { ...field.position, page: null } });
+    const currentPage = field.position.page;
+    
+    // Tạo bản sao của field cho mỗi page
+    const newFields: Field[] = [];
+    for (let page = 0; page < numPages; page++) {
+      // Bỏ qua page hiện tại vì field đã tồn tại
+      if (page === currentPage) continue;
+      
+      const newTempId = `field-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-page${page}`;
+      const copiedField = {
+        ...field,
+        tempId: newTempId,
+        id: undefined, // Field mới chưa có id
+        position: {
+          ...field.position,
+          page: page
+        }
+      };
+      newFields.push(copiedField);
+    }
+    
+    // Thêm tất cả bản sao vào fields
+    setFields(prev => [...prev, ...newFields]);
+    
+    console.log(`Copied field to ${newFields.length} other pages`);
   };
 
   const handleSaveClick = async () => {

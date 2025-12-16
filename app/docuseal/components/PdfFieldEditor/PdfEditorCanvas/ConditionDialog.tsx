@@ -34,7 +34,25 @@ const ConditionDialog: React.FC<ConditionDialogProps> = ({
   currentTempId,
   onSave,
 }) => {
+  console.log('dependentField:', dependentField);
+  console.log('allFields:', allFields);
   const availableFields = allFields.filter(field => field.tempId !== currentTempId);
+  console.log('availableFields:', availableFields);
+  
+  // Convert dependentField (label from DB) to tempId for Select value
+  // Nếu dependentField là label (ví dụ: "text_1"), tìm tempId tương ứng
+  const displayValue = React.useMemo(() => {
+    // Nếu dependentField đã là tempId (bắt đầu với "field-"), dùng luôn
+    if (dependentField?.startsWith('field-')) {
+      return dependentField;
+    }
+    // Nếu là label, tìm field có label đó và lấy tempId
+    const field = allFields.find(f => f.label === dependentField);
+    return field ? field.tempId : '';
+  }, [dependentField, allFields]);
+  
+  console.log('displayValue for Select:', displayValue);
+  
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Set Condition</DialogTitle>
@@ -42,7 +60,7 @@ const ConditionDialog: React.FC<ConditionDialogProps> = ({
         <FormControl fullWidth margin="normal">
           <InputLabel>Dependent Field</InputLabel>
           <Select
-            value={dependentField}
+            value={displayValue || ''}
             label="Dependent Field"
             onChange={(e) => onDependentFieldChange(e.target.value)}
           >
@@ -56,7 +74,7 @@ const ConditionDialog: React.FC<ConditionDialogProps> = ({
         <FormControl fullWidth margin="normal">
           <InputLabel>Condition</InputLabel>
           <Select
-            value={condition}
+            value={condition || 'not_empty'}
             label="Condition"
             onChange={(e) => onConditionChange(e.target.value)}
           >
