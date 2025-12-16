@@ -34,10 +34,7 @@ const ConditionDialog: React.FC<ConditionDialogProps> = ({
   currentTempId,
   onSave,
 }) => {
-  console.log('dependentField:', dependentField);
-  console.log('allFields:', allFields);
   const availableFields = allFields.filter(field => field.tempId !== currentTempId);
-  console.log('availableFields:', availableFields);
   
   // Convert dependentField (label from DB) to tempId for Select value
   // Nếu dependentField là label (ví dụ: "text_1"), tìm tempId tương ứng

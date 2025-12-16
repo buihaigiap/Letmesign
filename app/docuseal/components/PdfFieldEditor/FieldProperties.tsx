@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { EditorField } from './types';
 import { Plus, X, Trash2 } from 'lucide-react';
+import upstashService from '../../ConfigApi/upstashService';
+import toast from 'react-hot-toast';
 
 interface FieldPropertiesProps {
   fields: EditorField[];
@@ -10,6 +12,8 @@ interface FieldPropertiesProps {
   updateField: (tempId: string, updates: Partial<EditorField>) => void;
   getCurrentToolIcon: (fieldType: string) => React.ReactElement;
   deleteField: (tempId: string) => void;
+  token: string;
+  templateId: number;
 }
 
 const FieldProperties: React.FC<FieldPropertiesProps> = ({
@@ -19,7 +23,9 @@ const FieldProperties: React.FC<FieldPropertiesProps> = ({
   setSelectedFieldTempId,
   updateField,
   getCurrentToolIcon,
-  deleteField
+  deleteField,
+  token,
+  templateId
 }) => {
   const [newOptionText, setNewOptionText] = useState('');
   const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
@@ -29,26 +35,46 @@ const FieldProperties: React.FC<FieldPropertiesProps> = ({
 
   const handleAddOption = () => {
     if (!selectedField || !newOptionText.trim()) return;
-    const currentOptions = selectedField.options || [];
-    updateField(selectedField.tempId, { 
-      options: [...currentOptions, newOptionText.trim()] 
-    });
+    const currentOptions = selectedField.options && typeof selectedField.options === 'object' && !Array.isArray(selectedField.options) ? selectedField.options.options : selectedField.options;
+    const updatedOptions = [...(Array.isArray(currentOptions) ? currentOptions : []), newOptionText.trim()];
+    const optionsObject = Array.isArray(selectedField.options) ? { options: updatedOptions } : { ...selectedField.options, options: updatedOptions };
+    updateField(selectedField.tempId, { options: optionsObject });
     setNewOptionText('');
+    if (selectedField.id) {
+      upstashService.updateField(templateId, selectedField.id, { options: optionsObject }).catch((error) => {
+        console.error('Failed to save options:', error);
+        toast.error('Failed to save options');
+      });
+    }
   };
 
   const handleRemoveOption = (index: number) => {
     if (!selectedField) return;
-    const currentOptions = selectedField.options || [];
-    updateField(selectedField.tempId, { 
-      options: currentOptions.filter((_, i) => i !== index) 
-    });
+    const currentOptions = selectedField.options && typeof selectedField.options === 'object' && !Array.isArray(selectedField.options) ? selectedField.options.options : selectedField.options;
+    const updatedOptions = (Array.isArray(currentOptions) ? currentOptions : []).filter((_, i) => i !== index);
+    const optionsObject = Array.isArray(selectedField.options) ? { options: updatedOptions } : { ...selectedField.options, options: updatedOptions };
+    updateField(selectedField.tempId, { options: optionsObject });
+    if (selectedField.id) {
+      upstashService.updateField(templateId, selectedField.id, { options: optionsObject }).catch((error) => {
+        console.error('Failed to save options:', error);
+        toast.error('Failed to save options');
+      });
+    }
   };
 
   const handleUpdateOption = (index: number, value: string) => {
     if (!selectedField) return;
-    const currentOptions = [...(selectedField.options || [])];
-    currentOptions[index] = value;
-    updateField(selectedField.tempId, { options: currentOptions });
+    const currentOptions = selectedField.options && typeof selectedField.options === 'object' && !Array.isArray(selectedField.options) ? selectedField.options.options : selectedField.options;
+    const updatedOptions = [...(Array.isArray(currentOptions) ? currentOptions : [])];
+    updatedOptions[index] = value;
+    const optionsObject = Array.isArray(selectedField.options) ? { options: updatedOptions } : { ...selectedField.options, options: updatedOptions };
+    updateField(selectedField.tempId, { options: optionsObject });
+    if (selectedField.id) {
+      upstashService.updateField(templateId, selectedField.id, { options: optionsObject }).catch((error) => {
+        console.error('Failed to save options:', error);
+        toast.error('Failed to save options');
+      });
+    }
   };
 
   return (
@@ -195,24 +221,27 @@ const FieldProperties: React.FC<FieldPropertiesProps> = ({
           <div className="mt-4 border-t border-gray-600 pt-4">
             <h4 className="text-sm font-semibold text-white mb-2">Options</h4>
             <div className="space-y-2">
-              {(selectedField.options || []).map((option, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={option}
-                    onChange={(e) => handleUpdateOption(index, e.target.value)}
-                    className="flex-1 px-2 py-1 bg-gray-700 text-white rounded text-sm border border-gray-600 focus:border-indigo-500 outline-none"
-                    placeholder={`Option ${index + 1}`}
-                  />
-                  <button
-                    onClick={() => handleRemoveOption(index)}
-                    className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded"
-                    title="Remove option"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+              {(() => {
+                const currentOptions = selectedField.options && typeof selectedField.options === 'object' && !Array.isArray(selectedField.options) ? selectedField.options.options : selectedField.options;
+                return (Array.isArray(currentOptions) ? currentOptions : []).map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={option}
+                      onChange={(e) => handleUpdateOption(index, e.target.value)}
+                      className="flex-1 px-2 py-1 bg-gray-700 text-white rounded text-sm border border-gray-600 focus:border-indigo-500 outline-none"
+                      placeholder={`Option ${index + 1}`}
+                    />
+                    <button
+                      onClick={() => handleRemoveOption(index)}
+                      className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded"
+                      title="Remove option"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ));
+              })()}
               
               <div className="flex items-center gap-2 mt-2">
                 <input

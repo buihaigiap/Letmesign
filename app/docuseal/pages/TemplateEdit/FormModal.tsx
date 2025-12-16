@@ -87,6 +87,16 @@ const FormModal = ({
 
     const validation = field.options?.validation;
     if (!validation || validation.type === 'none') {
+      // For number fields, always check min/max length if set, even when validation type is 'none'
+      if (field.field_type === 'number' && validation && (validation.minLength || validation.maxLength)) {
+        const length = value.length;
+        if (validation.minLength && length < parseInt(validation.minLength)) {
+          return `Minimum length is ${validation.minLength} characters`;
+        }
+        if (validation.maxLength && length > parseInt(validation.maxLength)) {
+          return `Maximum length is ${validation.maxLength} characters`;
+        }
+      }
       return null;
     }
 

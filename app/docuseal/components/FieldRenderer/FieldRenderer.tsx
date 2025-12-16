@@ -52,7 +52,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
   submitterEmail,
   reason,globalSettings
 }) => {
-
+  console.log('field' , field)
   const renderFieldContent = () => {
     // Nếu có children (như editing UI), ưu tiên render children
     if (children) {
@@ -90,6 +90,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
       (field.field_type === 'signature' ? defaultSignature :
         field.field_type === 'initials' ? defaultInitials :
           undefined);
+          console.log('FieldRenderer displayValue:', displayValue);
     // Nếu có displayValue, render theo field type
     if (displayValue) {
       switch (field.field_type) {
@@ -157,6 +158,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           );
 
         case 'cells':
+          const justifyClass = field.options?.alignment === 'right' ? 'justify-end' : 'justify-start';
           return (
             <div
               className="w-full h-full grid overflow-hidden"
@@ -167,13 +169,49 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
               {Array.from({ length: field.options?.columns || 3 }, (_, i) => {
                 const char = displayValue?.[i] || '';
                 return (
-                  <div key={i} className="border border-gray-400 flex items-center justify-end text-base font-bold px-1">
+                  <div key={i} className={`border border-gray-400 flex items-center ${justifyClass} text-base font-bold px-1`}>
                     {char}
                   </div>
                 );
               })}
             </div>
           );
+
+        case 'number':
+          if (field.options?.numberFormat && field.options.numberFormat !== 'none') {
+            const num = parseFloat(displayValue);
+            if (!isNaN(num)) {
+              let formatted;
+              switch (field.options.numberFormat) {
+                case 'usd':
+                  formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
+                  break;
+                case 'eur':
+                  formatted = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(num);
+                  break;
+                case 'gbp':
+                  formatted = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(num);
+                  break;
+                case 'comma':
+                  formatted = num.toLocaleString('en-US').replace(/\.\d+$/, '');
+                  break;
+                case 'dot':
+                  formatted = num.toLocaleString('de-DE').replace(/,\d+$/, '');
+                  break;
+                case 'space':
+                  formatted = num.toLocaleString('fr-FR').replace(/,\d+$/, '');
+                  break;
+                default:
+                  formatted = displayValue;
+              }
+              return (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-sm">{formatted}</span>
+                </div>
+              );
+            }
+          }
+          return displayValue;
 
         default:
           return displayValue;

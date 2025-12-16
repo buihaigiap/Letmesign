@@ -77,6 +77,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   const [isReadOnly, setIsReadOnly] = React.useState(readOnly);
   const gripRef = React.useRef<HTMLDivElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const [defaultValueSelectOpen, setDefaultValueSelectOpen] = React.useState(false);
   const [selectOpen, setSelectOpen] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [description, setDescription] = React.useState('');
@@ -87,10 +88,20 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   const [dateFormat, setDateFormat] = React.useState('MM/DD/YYYY');
   const [setSigningDate, setSetSigningDate] = React.useState(false);
   const [dateFormatSelectOpen, setDateFormatSelectOpen] = React.useState(false);
+  const [numberFormat, setNumberFormat] = React.useState('none');
+  const [numberFormatSelectOpen, setNumberFormatSelectOpen] = React.useState(false);
+  const [alignment, setAlignment] = React.useState('left');
+  const [alignmentSelectOpen, setAlignmentSelectOpen] = React.useState(false);
 
   React.useEffect(() => {
     setLocalDefaultValue(defaultValue);
   }, [defaultValue]);
+
+  React.useEffect(() => {
+    if (fieldType === 'radio' || fieldType === 'select') {
+      setLocalDefaultValue(currentOptions?.defaultValue || 'none');
+    }
+  }, [fieldType, currentOptions]);
 
   React.useEffect(() => {
     setValidationType(validation.type || 'none');
@@ -119,8 +130,20 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   }, [fieldType, currentOptions]);
 
   React.useEffect(() => {
+    if (fieldType === 'number') {
+      setNumberFormat(currentOptions?.numberFormat || 'none');
+    }
+  }, [fieldType, currentOptions]);
+
+  React.useEffect(() => {
+    if (fieldType === 'cells') {
+      setAlignment(currentOptions?.alignment || 'left');
+    }
+  }, [fieldType, currentOptions]);
+
+  React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (selectOpen || dialogOpen || conditionDialogOpen || dateFormatSelectOpen) return;
+      if (selectOpen || dialogOpen || conditionDialogOpen || dateFormatSelectOpen || numberFormatSelectOpen || alignmentSelectOpen || defaultValueSelectOpen) return;
       if (
         menuRef.current &&
         !menuRef.current.contains(event.target as Node) &&
@@ -138,7 +161,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showMenu, selectOpen, dialogOpen, conditionDialogOpen, dateFormatSelectOpen]);
+  }, [showMenu, selectOpen, dialogOpen, conditionDialogOpen, dateFormatSelectOpen, numberFormatSelectOpen, alignmentSelectOpen, defaultValueSelectOpen]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -204,6 +227,16 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     { value: 'D MMMM YYYY', label: `D MMMM YYYY - ${formatDate(getCurrentDateString(), 'D MMMM YYYY')}` },
   ];
 
+  const numberFormatOptions = [
+    { value: 'none', label: '1234567.89' },
+    { value: 'usd', label: '$1,234,567.89' },
+    { value: 'eur', label: '1 234 567,89 €' },
+    { value: 'gbp', label: '£1,234,567.89' },
+    { value: 'comma', label: '1,234,567' },
+    { value: 'dot', label: '1.234.567' },
+    { value: 'space', label: '1 234 567' },
+  ];
+
   const inputStyle = {
     width: "100%",
     "& .MuiOutlinedInput-input": {
@@ -259,31 +292,96 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             })(),
           }}
         >
-
-          {/* Default value - hide for image, multiple, signature, initials, file, and date */}
-          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && fieldType !== 'date' && (
-            <TextField
-              variant="outlined"
-              size="small"
-              placeholder="Default value"
-              value={localDefaultValue}
-              onChange={(e) => handleDefaultValueChange(e.target.value)}
-              onBlur={handleMenuClose}
-              onKeyDown={handleDefaultValueKeyDown}
-              onClick={(e) => e.stopPropagation()}
-              sx={inputStyle}
-            />
+          {
+          fieldType !== 'image' && fieldType !== 'multiple' && 
+          fieldType !== 'signature' && fieldType !== 'initials' &&
+          fieldType !== 'file' && fieldType !== 'date' && (
+            fieldType === 'radio' || fieldType === 'select' ? (
+              <FormControl fullWidth>
+                <InputLabel
+                 shrink={true}
+                 sx={{
+                    color: 'black',
+                    '&.Mui-focused': { color: 'black' },
+                    '&.MuiInputLabel-shrink': { color: 'black'},
+                  }}
+                >
+                  Default value
+                </InputLabel>
+                <Select
+                  value={localDefaultValue}
+                  label="Default value"
+                  open={defaultValueSelectOpen}
+                  onOpen={() => setDefaultValueSelectOpen(true)}
+                  onClose={() => setDefaultValueSelectOpen(false)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setLocalDefaultValue(value);
+                    const newOptions = { ...currentOptions, defaultValue: value === 'none' ? '' : value };
+                    updateField(tempId, { options: newOptions });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{
+                  fontSize: '14px',
+                  height: '20px',
+                  borderRadius: '4px',
+                  mb : 1,
+                  '& .MuiSelect-select': { color: '#000' },
+                  '& .Mui-focused .MuiSelect-select': { color: '#000' },
+                  '& .MuiSelect-select.MuiSelect-select': { color: '#000' },
+                  '&.Mui-disabled .MuiSelect-select': {
+                    color: '#000',
+                    WebkitTextFillColor: '#000',
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'black',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'black',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'black',
+                  },
+              }}
+                >
+                  {(() => {
+                    const options = Array.isArray(currentOptions) ? currentOptions : (currentOptions?.options || []);
+                    const allOptions = ["None", ...options];
+                    
+                    return Array.isArray(allOptions) ? allOptions.map(option => (
+                      <MenuItem key={option} value={option === "None" ? "none" : option}>{option}</MenuItem>
+                    )) : null;
+                  })()}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                variant="outlined"
+                size="small"
+                placeholder="Default value"
+                value={localDefaultValue}
+                onChange={(e) => handleDefaultValueChange(e.target.value)}
+                onBlur={handleMenuClose}
+                onKeyDown={handleDefaultValueKeyDown}
+                onClick={(e) => e.stopPropagation()}
+                sx={inputStyle}
+              />
+            )
           )}
 
-          {/* Validation select - hide for image, multiple, signature, initials, file, and date */}
-          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && fieldType !== 'date' && (
+          {
+            fieldType !== 'image' && fieldType !== 'multiple' && 
+            fieldType !== 'signature' && fieldType !== 'initials' &&
+            fieldType !== 'file' && fieldType !== 'date' &&
+            fieldType !== 'number' &&
+          (
           <>
           <FormControl fullWidth>
             <InputLabel
               sx={{
                 color: 'black',
                 '&.Mui-focused': { color: 'black' },
-                '&.MuiInputLabel-shrink': { color: 'black' },
+                '&.MuiInputLabel-shrink': { color: 'black'},
               }}
             >
               Validation
@@ -292,6 +390,9 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             <Select
               value={validationType}
               label="Validation"
+              open={selectOpen}
+              onOpen={() => setSelectOpen(true)}
+              onClose={() => setSelectOpen(false)}
               onChange={(e) => {
                 const newType = e.target.value;
                 setValidationType(newType);
@@ -333,7 +434,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             </Select>
           </FormControl>
 
-          {validationType === 'length' && (
+          {(validationType === 'length' || fieldType === 'number') && (
             <Box
               sx={{ 
                 display: 'flex',
@@ -428,6 +529,53 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
           </>
           )}
 
+          {fieldType === 'number' && (
+            <Box
+              sx={{ 
+                display: 'flex',
+                gap: '2px'
+              }}
+            >
+              <TextField
+                type="number"
+                placeholder="Min length"
+                size="small"
+                value={minLength}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setMinLength(val);
+                  const newValidation = {
+                    type: validationType,
+                    minLength: val,
+                    maxLength,
+                  };
+                  onValidationChange(tempId, newValidation);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                sx={inputStyle}
+              />
+
+              <TextField
+                type="number"
+                placeholder="Max length"
+                size="small"
+                value={maxLength}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setMaxLength(val);
+                  const newValidation = {
+                    type: validationType,
+                    minLength,
+                    maxLength: val,
+                  };
+                  onValidationChange(tempId, newValidation);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                sx={inputStyle}
+              />
+            </Box>
+          )}
+
           {/* Read-Only - hide for image, multiple, signature, initials, and file */}
           {fieldType !== 'image' && fieldType !== 'multiple' &&
            fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' &&
@@ -512,6 +660,105 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
                   },
                 }}
               />
+            </>
+          ) : fieldType === 'number' ? (
+            <>
+              <FormControl fullWidth>
+                <InputLabel
+                  sx={{
+                    color: 'black',
+                    '&.Mui-focused': { color: 'black' },
+                    '&.MuiInputLabel-shrink': { color: 'black' },
+                  }}
+                >
+                  Format
+                </InputLabel>
+                <Select
+                  value={numberFormat}
+                  label="Format"
+                  open={numberFormatSelectOpen}
+                  onOpen={() => setNumberFormatSelectOpen(true)}
+                  onClose={() => setNumberFormatSelectOpen(false)}
+                  onChange={(e) => {
+                    const newFormat = e.target.value;
+                    setNumberFormat(newFormat);
+                    const newOptions = { ...currentOptions, numberFormat: newFormat };
+                    updateField(tempId, { options: newOptions });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{
+                    fontSize: '14px',
+                    height: '32px',
+                    borderRadius: '4px',
+                    '& .MuiSelect-select': { color: '#000' },
+                    '& .Mui-focused .MuiSelect-select': { color: '#000' },
+                    '& .MuiSelect-select.MuiSelect-select': { color: '#000' },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                  }}
+                >
+                  {numberFormatOptions.map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </>
+          ) : fieldType === 'cells' ? (
+            <>
+              <FormControl fullWidth>
+                <InputLabel
+                  sx={{
+                    color: 'black',
+                    '&.Mui-focused': { color: 'black' },
+                    '&.MuiInputLabel-shrink': { color: 'black' },
+                  }}
+                >
+                  Align
+                </InputLabel>
+                <Select
+                  value={alignment}
+                  label="Align"
+                  open={alignmentSelectOpen}
+                  onOpen={() => setAlignmentSelectOpen(true)}
+                  onClose={() => setAlignmentSelectOpen(false)}
+                  onChange={(e) => {
+                    const newAlign = e.target.value;
+                    setAlignment(newAlign);
+                    const newOptions = { ...currentOptions, alignment: newAlign };
+                    updateField(tempId, { options: newOptions });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{
+                    fontSize: '14px',
+                    height: '32px',
+                    borderRadius: '4px',
+                    '& .MuiSelect-select': { color: '#000' },
+                    '& .Mui-focused .MuiSelect-select': { color: '#000' },
+                    '& .MuiSelect-select.MuiSelect-select': { color: '#000' },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                  }}
+                >
+                  <MenuItem value="left">Left</MenuItem>
+                  <MenuItem value="right">Right</MenuItem>
+                </Select>
+              </FormControl>
             </>
           ) : (
           <FormControlLabel

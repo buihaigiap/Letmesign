@@ -233,14 +233,27 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                   fieldId={f.id}
                   fieldType={f.field_type}
                   defaultValue={f.options?.defaultValue || ''}
-                  onDefaultValueChange={(tempId, value) => updateField(tempId, { options: { ...f.options, defaultValue: value } })}
+                  onDefaultValueChange={(tempId, value) => {
+                    const currentOptions = Array.isArray(f.options) ? { options: f.options } : f.options;
+                    updateField(tempId, { options: { ...currentOptions, defaultValue: value } });
+                  }}
                   validation={f.options?.validation || { type: 'none' }}
-                  onValidationChange={(tempId, validation) => updateField(tempId, { options: { ...f.options, validation } })}
+                  onValidationChange={(tempId, validation) => {
+                    const currentOptions = Array.isArray(f.options) ? { options: f.options } : f.options;
+                    updateField(tempId, { options: { ...currentOptions, validation } });
+                  }}
                   readOnly={f.options?.readOnly || false}
-                  onReadOnlyChange={(tempId, readOnly) => updateField(tempId, { options: { ...f.options, readOnly } })}
-                  onDescriptionChange={(tempId, desc) => updateField(tempId, { options: { ...f.options, ...desc } })}
+                  onReadOnlyChange={(tempId, readOnly) => {
+                    const currentOptions = Array.isArray(f.options) ? { options: f.options } : f.options;
+                    updateField(tempId, { options: { ...currentOptions, readOnly } });
+                  }}
+                  onDescriptionChange={(tempId, desc) => {
+                    const currentOptions = Array.isArray(f.options) ? { options: f.options } : f.options;
+                    updateField(tempId, { options: { ...currentOptions, ...desc } });
+                  }}
                   onConditionChange={(tempId, condition) => {
-                    updateField(tempId, { options: { ...f.options, condition } });
+                    const currentOptions = Array.isArray(f.options) ? { options: f.options } : f.options;
+                    updateField(tempId, { options: { ...currentOptions, condition } });
                   }}
                   updateField={updateField}
                   overlayRef={overlayRef}

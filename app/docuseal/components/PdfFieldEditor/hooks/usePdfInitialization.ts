@@ -57,7 +57,12 @@ export const usePdfInitialization = (
       return {
         ...f,
         tempId: `field-${f.id}`,
-        options: f.options || (f.field_type === 'radio' ? ['Option 1', 'Option 2'] : f.field_type === 'multiple' ? ['Option 1', 'Option 2', 'Option 3'] : f.field_type === 'select' ? ['Option 1', 'Option 2', 'Option 3'] : f.field_type === 'cells' ? { columns: 3, widths: [1,1,1] } : f.options),
+        options: f.options && typeof f.options === 'object' && !Array.isArray(f.options) ? f.options : 
+          (f.field_type === 'radio' ? { options: ['Option 1', 'Option 2'], defaultValue: (f.options && Array.isArray(f.options) ? '' : f.options?.defaultValue) || '' } : 
+           f.field_type === 'multiple' ? { options: ['Option 1', 'Option 2', 'Option 3'], defaultValue: (f.options && Array.isArray(f.options) ? '' : f.options?.defaultValue) || '' } : 
+           f.field_type === 'select' ? { options: ['Option 1', 'Option 2', 'Option 3'], defaultValue: (f.options && Array.isArray(f.options) ? '' : f.options?.defaultValue) || '' } : 
+           f.field_type === 'cells' ? { columns: 3, widths: [1,1,1], ...(f.options && typeof f.options === 'object' ? f.options : {}) } : 
+           f.options),
         position: position
       };
     });
@@ -85,7 +90,12 @@ export const usePdfInitialization = (
       
       return [f.id, {
         ...f,
-        options: f.options || (f.field_type === 'radio' ? ['Option 1', 'Option 2'] : f.field_type === 'multiple' ? ['Option 1', 'Option 2', 'Option 3'] : f.field_type === 'select' ? ['Option 1', 'Option 2', 'Option 3'] : f.field_type === 'cells' ? { columns: 3, widths: [1,1,1] } : f.options),
+        options: f.options && typeof f.options === 'object' && !Array.isArray(f.options) ? f.options : 
+          (f.field_type === 'radio' ? { options: ['Option 1', 'Option 2'], defaultValue: (f.options && Array.isArray(f.options) ? '' : f.options?.defaultValue) || '' } : 
+           f.field_type === 'multiple' ? { options: ['Option 1', 'Option 2', 'Option 3'], defaultValue: (f.options && Array.isArray(f.options) ? '' : f.options?.defaultValue) || '' } : 
+           f.field_type === 'select' ? { options: ['Option 1', 'Option 2', 'Option 3'], defaultValue: (f.options && Array.isArray(f.options) ? '' : f.options?.defaultValue) || '' } : 
+           f.field_type === 'cells' ? { columns: 3, widths: [1,1,1], ...(f.options && typeof f.options === 'object' ? f.options : {}) } : 
+           f.options),
         position: position
       }];
     })));

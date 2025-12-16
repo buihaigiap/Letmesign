@@ -237,6 +237,8 @@ const DocumentEditor = forwardRef<any>(function DocumentEditor({ template, token
           setSelectedFieldTempId={setSelectedFieldTempId}
           updateField={updateField}
           deleteField={deleteField}
+          token={token}
+          templateId={template.id}
         />
         {checkRole && !hasAccess && (
           <div>

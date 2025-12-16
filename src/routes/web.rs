@@ -1960,42 +1960,38 @@ pub async fn verify_2fa_handler(
     State(state): State<AppState>,
     Extension(user_id): Extension<i64>,
     Json(payload): Json<Verify2FARequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> (StatusCode, Json<serde_json::Value>) {
     let pool = &state.lock().await.db_pool;
 
     // Get user from database
     let user = match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
         Ok(Some(db_user)) => crate::models::user::User::from(db_user),
         Ok(None) => {
-            return Ok(Json(serde_json::json!({
+            return (StatusCode::NOT_FOUND, Json(serde_json::json!({
                 "success": false,
-                "status_code": 404,
-                "message": "Not Found",
+                "message": "User not found",
                 "data": null,
                 "error": "User not found"
             })));
         }
-        Err(_) => {
-            return Ok(Json(serde_json::json!({
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
                 "success": false,
-                "status_code": 500,
                 "message": "Internal Server Error",
                 "data": null,
-                "error": "Failed to fetch user"
+                "error": format!("Failed to fetch user: {}", e)
             })));
         }
     };
 
     // Check if 2FA is already enabled
     if user.two_factor_enabled {
-        let response = serde_json::json!({
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
             "success": false,
-            "status_code": 400,
-            "message": "Bad Request",
+            "message": "2FA is already enabled for this account",
             "data": null,
             "error": "2FA is already enabled for this account"
-        });
-        return Ok(Json(response));
+        })));
     }
 
     // Verify the TOTP code with the provided secret
@@ -2010,48 +2006,40 @@ pub async fn verify_2fa_handler(
             .execute(pool)
             .await {
                 Ok(_) => {
-                    let response = serde_json::json!({
+                    (StatusCode::OK, Json(serde_json::json!({
                         "success": true,
-                        "status_code": 200,
                         "message": "2FA has been enabled successfully",
                         "data": {
                             "enabled": true
                         },
                         "error": null
-                    });
-                    Ok(Json(response))
+                    })))
                 }
                 Err(e) => {
-                    let response = serde_json::json!({
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
                         "success": false,
-                        "status_code": 500,
                         "message": "Internal Server Error",
                         "data": null,
                         "error": format!("Failed to enable 2FA: {}", e)
-                    });
-                    Ok(Json(response))
+                    })))
                 }
             }
         }
         Ok(false) => {
-            let response = serde_json::json!({
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({
                 "success": false,
-                "status_code": 400,
-                "message": "Bad Request",
+                "message": "Invalid verification code",
                 "data": null,
                 "error": "Invalid verification code"
-            });
-            Ok(Json(response))
+            })))
         }
         Err(e) => {
-            let response = serde_json::json!({
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
                 "success": false,
-                "status_code": 500,
                 "message": "Internal Server Error",
                 "data": null,
                 "error": format!("Failed to verify code: {}", e)
-            });
-            Ok(Json(response))
+            })))
         }
     }
 }
