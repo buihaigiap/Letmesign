@@ -122,7 +122,7 @@ const PdfFullView: React.FC<PdfFullViewProps> = ({
               <div
                 key={field.id}
                 className={
-                  field?.options?.readOnly ? '' :
+                  field?.options?.readOnly || (field?.options?.setSigningDate) ? '' :
                   getFieldClass(field.partner, true, partnerColorClasses)}
                 style={{
                   position: 'absolute',

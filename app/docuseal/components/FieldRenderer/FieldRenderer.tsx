@@ -2,6 +2,7 @@ import React from 'react';
 import SignatureRenderer from '../SignatureRenderer';
 import { fieldTools } from '../PdfFieldEditor/constants';
 import { useBasicSettings } from '../../hooks/useBasicSettings';
+import { formatDate } from '../PdfFieldEditor/utils';
 interface FieldPosition {
   x: number;
   y: number;
@@ -19,6 +20,7 @@ interface Field {
   position: FieldPosition;
   options?: any;
   partner?: string;
+  created_at?: string;
 }
 
 interface FieldRendererProps {
@@ -50,6 +52,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
   submitterEmail,
   reason,globalSettings
 }) => {
+
   const renderFieldContent = () => {
     // Nếu có children (như editing UI), ưu tiên render children
     if (children) {
@@ -59,6 +62,27 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
     // Safety check for field
     if (!field) {
       return null;
+    }
+
+    // Handle date field with dateFormat option (for both setSigningDate true/false)
+    if (field.field_type === 'date' && field.options?.dateFormat) {
+      // If setSigningDate is true and we have created_at, use that
+      if (field.options?.setSigningDate && field.created_at) {
+        return (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm">{formatDate(field.created_at, field.options.dateFormat)}</span>
+          </div>
+        );
+      }
+      
+      // If setSigningDate is false or no created_at, check if we have a value to format
+      if (value) {
+        return (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm">{formatDate(value, field.options.dateFormat)}</span>
+          </div>
+        );
+      }
     }
 
     // Xác định giá trị hiển thị: ưu tiên value, sau đó dùng defaultValue từ options, sau đó dùng default từ user profile

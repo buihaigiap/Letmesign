@@ -37,3 +37,39 @@ export const checkOverlap = (tempId: string, newPos: any, fields: EditorField[])
     newPos.y + newPos.height > f.position!.y
   );
 };
+
+
+ export  const formatDate = (dateString?: string, format?: string) => {
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthNamesFull = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    
+    switch (format) {
+      case 'MM/DD/YYYY':
+        return `${pad(month)}/${pad(day)}/${year}`;
+      case 'DD/MM/YYYY':
+        return `${pad(day)}/${pad(month)}/${year}`;
+      case 'YYYY-MM-DD':
+        return `${year}-${pad(month)}-${pad(day)}`;
+      case 'DD-MM-YYYY':
+        return `${pad(day)}-${pad(month)}-${year}`;
+      case 'DD.MM.YYYY':
+        return `${pad(day)}.${pad(month)}.${year}`;
+      case 'MMM D, YYYY':
+        return `${monthNames[month - 1]} ${day}, ${year}`;
+      case 'MMMM D, YYYY':
+        return `${monthNamesFull[month - 1]} ${day}, ${year}`;
+      case 'D MMM YYYY':
+        return `${day} ${monthNames[month - 1]} ${year}`;
+      case 'D MMMM YYYY':
+        return `${day} ${monthNamesFull[month - 1]} ${year}`;
+      default:
+        return dateString;
+    }
+  };

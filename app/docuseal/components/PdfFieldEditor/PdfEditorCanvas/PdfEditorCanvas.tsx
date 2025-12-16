@@ -242,6 +242,7 @@ const PdfEditorCanvas: React.FC<PdfEditorCanvasProps> = ({
                   onConditionChange={(tempId, condition) => {
                     updateField(tempId, { options: { ...f.options, condition } });
                   }}
+                  updateField={updateField}
                   overlayRef={overlayRef}
                   token={token}
                   templateId={templateId}

@@ -16,6 +16,7 @@ import DescriptionDialog from './DescriptionDialog';
 import ConditionDialog from './ConditionDialog';
 import upstashService from '../../../ConfigApi/upstashService';
 import toast from 'react-hot-toast';
+import { formatDate } from '../../PdfFieldEditor/utils';
 
 interface GripVerticalMenuProps {
   tempId: string;
@@ -35,6 +36,7 @@ interface GripVerticalMenuProps {
   onReadOnlyChange: (tempId: string, readOnly: boolean) => void;
   onDescriptionChange: (tempId: string, desc: { displayTitle: string, description: string }) => void;
   onConditionChange: (tempId: string, condition: { dependentField: string, condition: string }) => void;
+  updateField: (tempId: string, updates: any) => void;
   overlayRef: React.RefObject<HTMLDivElement>;
   token: string;
   templateId: number;
@@ -56,6 +58,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   onReadOnlyChange,
   onDescriptionChange,
   onConditionChange,
+  updateField,
   overlayRef,
   token,
   templateId,
@@ -81,6 +84,9 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   const [conditionDialogOpen, setConditionDialogOpen] = React.useState(false);
   const [dependentField, setDependentField] = React.useState('');
   const [conditionType, setConditionType] = React.useState('not_empty');
+  const [dateFormat, setDateFormat] = React.useState('MM/DD/YYYY');
+  const [setSigningDate, setSetSigningDate] = React.useState(false);
+  const [dateFormatSelectOpen, setDateFormatSelectOpen] = React.useState(false);
 
   React.useEffect(() => {
     setLocalDefaultValue(defaultValue);
@@ -106,8 +112,15 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
   }, [conditionDialogOpen]);
 
   React.useEffect(() => {
+    if (fieldType === 'date') {
+      setDateFormat(currentOptions?.dateFormat || 'MM/DD/YYYY');
+      setSetSigningDate(currentOptions?.setSigningDate || false);
+    }
+  }, [fieldType, currentOptions]);
+
+  React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (selectOpen || dialogOpen || conditionDialogOpen) return;
+      if (selectOpen || dialogOpen || conditionDialogOpen || dateFormatSelectOpen) return;
       if (
         menuRef.current &&
         !menuRef.current.contains(event.target as Node) &&
@@ -125,7 +138,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showMenu, selectOpen, dialogOpen, conditionDialogOpen]);
+  }, [showMenu, selectOpen, dialogOpen, conditionDialogOpen, dateFormatSelectOpen]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -175,6 +188,20 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
     { value: 'custom', label: 'Custom' },
     { value: 'numbers_only', label: 'Numbers only' },
     { value: 'letters_only', label: 'Letters only' },
+  ];
+
+  const getCurrentDateString = () => new Date().toISOString();
+
+  const dateFormatOptions = [
+    { value: 'MM/DD/YYYY', label: `MM/DD/YYYY - ${formatDate(getCurrentDateString(), 'MM/DD/YYYY')}` },
+    { value: 'DD/MM/YYYY', label: `DD/MM/YYYY - ${formatDate(getCurrentDateString(), 'DD/MM/YYYY')}` },
+    { value: 'YYYY-MM-DD', label: `YYYY-MM-DD - ${formatDate(getCurrentDateString(), 'YYYY-MM-DD')}` },
+    { value: 'DD-MM-YYYY', label: `DD-MM-YYYY - ${formatDate(getCurrentDateString(), 'DD-MM-YYYY')}` },
+    { value: 'DD.MM.YYYY', label: `DD.MM.YYYY - ${formatDate(getCurrentDateString(), 'DD.MM.YYYY')}` },
+    { value: 'MMM D, YYYY', label: `MMM D, YYYY - ${formatDate(getCurrentDateString(), 'MMM D, YYYY')}` },
+    { value: 'MMMM D, YYYY', label: `MMMM D, YYYY - ${formatDate(getCurrentDateString(), 'MMMM D, YYYY')}` },
+    { value: 'D MMM YYYY', label: `D MMM YYYY - ${formatDate(getCurrentDateString(), 'D MMM YYYY')}` },
+    { value: 'D MMMM YYYY', label: `D MMMM YYYY - ${formatDate(getCurrentDateString(), 'D MMMM YYYY')}` },
   ];
 
   const inputStyle = {
@@ -233,8 +260,8 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
           }}
         >
 
-          {/* Default value - hide for image, multiple, signature, initials, and file */}
-          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && (
+          {/* Default value - hide for image, multiple, signature, initials, file, and date */}
+          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && fieldType !== 'date' && (
             <TextField
               variant="outlined"
               size="small"
@@ -248,8 +275,8 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             />
           )}
 
-          {/* Validation select - hide for image, multiple, signature, initials, and file */}
-          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && (
+          {/* Validation select - hide for image, multiple, signature, initials, file, and date */}
+          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' && fieldType !== 'date' && (
           <>
           <FormControl fullWidth>
             <InputLabel
@@ -405,6 +432,88 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
           {fieldType !== 'image' && fieldType !== 'multiple' &&
            fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' &&
             (
+          <>
+          {fieldType === 'date' ? (
+            <>
+              <FormControl fullWidth>
+                <InputLabel
+                  sx={{
+                    color: 'black',
+                    '&.Mui-focused': { color: 'black' },
+                    '&.MuiInputLabel-shrink': { color: 'black' },
+                  }}
+                >
+                  Format
+                </InputLabel>
+                <Select
+                  value={dateFormat}
+                  label="Format"
+                  open={dateFormatSelectOpen}
+                  onOpen={() => setDateFormatSelectOpen(true)}
+                  onClose={() => setDateFormatSelectOpen(false)}
+                  onChange={(e) => {
+                    const newFormat = e.target.value;
+                    setDateFormat(newFormat);
+                    const newOptions = { ...currentOptions, dateFormat: newFormat };
+                    updateField(tempId, { options: newOptions });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{
+                    fontSize: '14px',
+                    height: '32px',
+                    borderRadius: '4px',
+                    '& .MuiSelect-select': { color: '#000' },
+                    '& .Mui-focused .MuiSelect-select': { color: '#000' },
+                    '& .MuiSelect-select.MuiSelect-select': { color: '#000' },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'black',
+                    },
+                  }}
+                >
+                  {dateFormatOptions.map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={setSigningDate}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSetSigningDate(checked);
+                      const newOptions = { ...currentOptions, setSigningDate: checked };
+                      updateField(tempId, { options: newOptions });
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: 'black',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: 'black',
+                      },
+                    }}
+                  />
+                }
+                label="Set signing date"
+                sx={{
+                  color: 'black',
+                  '& .MuiFormControlLabel-label': {
+                    fontSize: '14px',
+                  },
+                }}
+              />
+            </>
+          ) : (
           <FormControlLabel
             control={
               <Switch
@@ -433,6 +542,8 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
               },
             }}
           />
+          )}
+          </>
           )}
 
           {/* Description - always show */}

@@ -25,8 +25,6 @@ export const usePdfInitialization = (
     );
 
     if (uniqueFields.length !== template.fields?.length) {
-      console.warn('⚠️ Duplicate fields detected! Original:', template.fields?.length, 'Unique:', uniqueFields.length);
-
       // Log field names to identify duplicates
       const fieldNames = (template.fields || []).map((f: any) => f.name);
       const nameCounts: Record<string, number> = {};
@@ -34,7 +32,6 @@ export const usePdfInitialization = (
         nameCounts[name] = (nameCounts[name] || 0) + 1;
       });
       const duplicateNames = Object.entries(nameCounts).filter(([_, count]) => count > 1);
-      console.warn('Duplicate field names:', duplicateNames);
     }
 
     const initialFields = uniqueFields.map((f: any) => {
@@ -54,11 +51,7 @@ export const usePdfInitialization = (
             width: f.position.width / pageW,
             height: f.position.height / pageH
           };
-          console.log('Converted position for field', f.name, 'from pixels to decimal:', f.position, '->', position);
-        } else {
-          // Already in decimal format (0-1)
-          console.log('Position already in decimal format for field', f.name, ':', position);
-        }
+        } 
       }
       
       return {
