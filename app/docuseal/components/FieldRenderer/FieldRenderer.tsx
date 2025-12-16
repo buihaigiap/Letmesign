@@ -85,7 +85,6 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
       }
     }
 
-    // Xác định giá trị hiển thị: ưu tiên value, sau đó dùng defaultValue từ options, sau đó dùng default từ user profile
     const displayValue = value ||
       field.options?.defaultValue ||
       (field.field_type === 'signature' ? defaultSignature :

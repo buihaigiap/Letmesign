@@ -155,7 +155,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({
           startIcon={<PenLine size={18} />}
           variant={mode === 'draw' ? 'contained' : 'outlined'}
           onClick={() => handleModeChange('draw')}
-          sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+          sx={{ textTransform: 'none', borderRadius: 2, px: 2 , color:'white' }}
         >
           Draw
         </Button>
@@ -265,9 +265,9 @@ const SignaturePad: React.FC<SignaturePadProps> = ({
             {typedText ? (
               <Typography
                 sx={{
-                  fontFamily: fieldType === 'initials'
-                    ? '"Times New Roman", Times, serif'
-                    : '"Brush Script MT", "Lucida Handwriting", "Apple Chancery", cursive',
+                  // fontFamily: fieldType === 'initials'
+                  //   ? '"Times New Roman", Times, serif'
+                  //   : '"Brush Script MT", "Lucida Handwriting", "Apple Chancery", cursive',
                   fontStyle: fieldType === 'initials' ? 'italic' : 'normal',
                   fontSize: Math.min(420 / Math.max(typedText.length * 0.8, 10), 48),
                   color: 'black',
@@ -275,12 +275,12 @@ const SignaturePad: React.FC<SignaturePadProps> = ({
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  maxWidth: '90%',
+                  maxWidth: '100%',
                   lineHeight: 1.2,
                   fontWeight: fieldType === 'initials' ? 400 : 300,
                 }}
               >
-                {typedText.length > 25 ? typedText.substring(0, 22) + '...' : typedText}
+                {typedText}
               </Typography>
             ) : (
               <Typography

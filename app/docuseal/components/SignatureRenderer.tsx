@@ -28,7 +28,6 @@ const SignatureRenderer: React.FC<SignatureRendererProps> = ({
   reason, globalSettings
 }) => {
   // 1. Parse Data Type
-  console.log('SignatureRenderer data:', data);
   const { type, content, vectorBounds } = useMemo(() => {
     if (!data) return { type: 'EMPTY', content: null };
     const trimmedData = data.trim();
@@ -194,24 +193,20 @@ const SignatureRenderer: React.FC<SignatureRendererProps> = ({
       const fontStyle = isInitials ? 'italic' : 'normal';
       const fontFamily = isInitials ? 'Helvetica, sans-serif' : 'sans-serif';
       
-      let fontSize = '100px';
-      let transform = 'none';
+      const textLength = (content as string).length;
+      const baseFontSize = 100;
+      let fontSize = `${baseFontSize}px`;
       
-      if (isInitials) {
-        const textLength = (content as string).length;
-        const baseFontSize = 100;
-        fontSize = `${baseFontSize}px`;
-        
-        // 0.68 - cân bằng tốt
-        const textHeight = baseFontSize * 0.68; 
-        const scaleY = height / textHeight;
-        
-        const textWidth = textLength * baseFontSize * 0.5;
-        const scaleX = width / textWidth;
-        
-        const scale = Math.min(scaleX, scaleY);
-        transform = `scale(${scale})`;
-      }
+      const lineHeightFactor = isInitials ? 1.2 : 1.0;
+      const textHeight = baseFontSize * lineHeightFactor; 
+      const scaleY = height / textHeight;
+      
+      const charWidthFactor = isInitials ? 0.6 : 0.6;
+      const textWidth = textLength * baseFontSize * charWidthFactor;
+      const scaleX = width / textWidth;
+      
+      const scale = Math.min(scaleX, scaleY);
+      const transform = `scale(${scale})`;
 
       return (
         <div style={{
@@ -221,7 +216,7 @@ const SignatureRenderer: React.FC<SignatureRendererProps> = ({
           color,
           textAlign: 'center',
           whiteSpace: 'nowrap',
-          lineHeight: isInitials ? '0.68' : 'normal',
+          lineHeight: isInitials ? '1.2' : 'normal', // Changed to match lineHeightFactor
           fontWeight: isInitials ? 'bold' : 'normal',
           overflow: 'visible',
           width: '100%',

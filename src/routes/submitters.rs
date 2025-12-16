@@ -865,16 +865,18 @@ async fn send_completion_notifications(
     use std::collections::HashSet;
     let mut notified_emails: HashSet<String> = HashSet::new();
     
+    // DO NOT generate combined PDF - each submitter should get their own signatures only
     // Generate combined PDF once if needed
-    let combined_document_path = if email_template.as_ref().map(|t| t.attach_documents).unwrap_or(false) {
-        if let Ok(storage_service) = StorageService::new().await {
-            if let Ok(signed_pdf_bytes) = generate_signed_pdf_for_template_with_filter(pool, template_id, &storage_service, None).await {
-                let temp_file = std::env::temp_dir().join(format!("signed_document_all_{}.pdf", template_id));
-                tokio::fs::write(&temp_file, signed_pdf_bytes).await.ok();
-                Some(temp_file.to_string_lossy().to_string())
-            } else { None }
-        } else { None }
-    } else { None };
+    // let combined_document_path = if email_template.as_ref().map(|t| t.attach_documents).unwrap_or(false) {
+    //     if let Ok(storage_service) = StorageService::new().await {
+    //         if let Ok(signed_pdf_bytes) = generate_signed_pdf_for_template_with_filter(pool, template_id, &storage_service, None).await {
+    //             let temp_file = std::env::temp_dir().join(format!("signed_document_all_{}.pdf", template_id));
+    //             tokio::fs::write(&temp_file, signed_pdf_bytes).await.ok();
+    //             Some(temp_file.to_string_lossy().to_string())
+    //         } else { None }
+    //     } else { None }
+    // } else { None };
+    let combined_document_path: Option<String> = None;
 
     // Send to completion_email first
     if let Some(ref email_tmpl) = email_template {
@@ -924,10 +926,10 @@ async fn send_completion_notifications(
         }
     }
 
-    // Cleanup
-    if let Some(path) = combined_document_path {
-        let _ = tokio::fs::remove_file(path).await;
-    }
+    // Cleanup - no combined document path anymore
+    // if let Some(path) = combined_document_path {
+    //     let _ = tokio::fs::remove_file(path).await;
+    // }
 
     Ok(())
 }
@@ -1292,11 +1294,12 @@ fn normalize_position(x: f64, y: f64, width: f64, height: f64) -> (f64, f64, f64
 }
 
 /// Helper function to render signatures on PDF using the position formula
-fn render_signatures_on_pdf(
+async fn render_signatures_on_pdf(
     pdf_bytes: &[u8],
     signatures: &[(String, String, String, f64, f64, f64, f64, i32, serde_json::Value)], // (field_name, field_type, signature_value, x, y, w, h, page, signature_json)
     user_settings: &crate::database::models::DbGlobalSettings,
     submitter: &crate::database::models::DbSubmitter,
+    storage_service: &crate::services::storage::StorageService,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync + 'static>> {
     println!("=== RENDER_SIGNATURES_ON_PDF CALLED (submitters.rs) ===");
     use lopdf::{Document, Object, Stream, Dictionary};
@@ -1528,10 +1531,14 @@ fn render_signatures_on_pdf(
                 render_signature_id_info(&mut doc, page_id, submitter, &signature_json, x_pos, pdf_y, field_width, field_height, user_settings)?;
             },
             "image" => {
-                // Hiển thị <img> với giá trị làm nguồn, được co giãn để vừa với khu vực trường
-                // Note: lopdf không hỗ trợ embed images trực tiếp, sẽ render như text placeholder
-                let display_value = format!("[IMAGE: {}]", signature_value);
-                render_text_field(&mut doc, page_id, &display_value, x_pos, pdf_y, field_width, field_height)?;
+                // Render image from URL
+                if signature_value.starts_with("/api/files/") || signature_value.starts_with("http://") || signature_value.starts_with("https://") {
+                    render_image_field(&mut doc, page_id, &signature_value, x_pos, pdf_y, field_width, field_height, storage_service).await?;
+                } else {
+                    // Fallback for invalid paths
+                    let display_value = format!("[IMAGE: {}]", signature_value);
+                    render_text_field(&mut doc, page_id, &display_value, x_pos, pdf_y, field_width, field_height)?;
+                }
             },
             "file" => {
                 // Hiển thị liên kết tải xuống có thể nhấp với tên tệp được trích xuất từ URL
@@ -1614,8 +1621,11 @@ fn render_signatures_on_pdf(
                 //     }
                 // }
                 
-                // Mặc định (trường văn bản hoặc chữ ký): Kiểm tra xem có phải vector signature không
-                if signature_value.starts_with('[') {
+                // Check if signature is an image URL (starts with /api/files/ or http)
+                if signature_value.starts_with("/api/files/") || signature_value.starts_with("http://") || signature_value.starts_with("https://") {
+                    // Render image from URL
+                    render_image_field(&mut doc, page_id, &signature_value, x_pos, sig_y, field_width, sig_height, storage_service).await?;
+                } else if signature_value.starts_with('[') {
                     // Đây là vector signature data - render drawing
                     render_vector_signature(&mut doc, page_id, &signature_value, x_pos, sig_y, field_width, sig_height)?;
                 } else if signature_value.starts_with('{') {
@@ -2685,6 +2695,189 @@ fn render_vector_signature(
     Ok(())
 }
 
+// Render image from file path or URL into PDF
+async fn render_image_field(
+    doc: &mut lopdf::Document,
+    page_id: lopdf::ObjectId,
+    image_path: &str,
+    x_pos: f64,
+    pdf_y: f64,
+    field_width: f64,
+    field_height: f64,
+    storage_service: &crate::services::storage::StorageService,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    use lopdf::{Object, Stream, Dictionary};
+    use lopdf::content::{Content, Operation};
+    
+    // Load image from storage or URL
+    let image_bytes = if image_path.starts_with("/api/files/") {
+        // Extract filename from path
+        let filename = image_path.trim_start_matches("/api/files/");
+        
+        // Download from storage
+        match storage_service.download_file(filename).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("Failed to download image {}: {}", filename, e);
+                return Ok(()); // Skip rendering this image
+            }
+        }
+    } else if image_path.starts_with("http://") || image_path.starts_with("https://") {
+        // Download from URL
+        match reqwest::get(image_path).await {
+            Ok(response) => match response.bytes().await {
+                Ok(bytes) => bytes.to_vec(),
+                Err(e) => {
+                    eprintln!("Failed to download image from URL {}: {}", image_path, e);
+                    return Ok(());
+                }
+            },
+            Err(e) => {
+                eprintln!("Failed to fetch image from URL {}: {}", image_path, e);
+                return Ok(());
+            }
+        }
+    } else {
+        eprintln!("Invalid image path: {}", image_path);
+        return Ok(());
+    };
+    
+    // Load image using the image crate
+    let img = match image::load_from_memory(&image_bytes) {
+        Ok(img) => img.to_rgba8(),
+        Err(e) => {
+            eprintln!("Failed to load image: {}", e);
+            return Ok(());
+        }
+    };
+    
+    let (img_width, img_height) = img.dimensions();
+    
+    // Calculate scaling to fit within field while maintaining aspect ratio
+    let scale_x = field_width / img_width as f64;
+    let scale_y = field_height / img_height as f64;
+    let scale = scale_x.min(scale_y);
+    
+    let scaled_width = img_width as f64 * scale;
+    let scaled_height = img_height as f64 * scale;
+    
+    // Center the image in the field
+    let offset_x = (field_width - scaled_width) / 2.0;
+    let offset_y = (field_height - scaled_height) / 2.0;
+    
+    // Convert RGBA to RGB (PDF images typically use RGB)
+    let mut rgb_data = Vec::with_capacity((img_width * img_height * 3) as usize);
+    for pixel in img.pixels() {
+        rgb_data.push(pixel[0]); // R
+        rgb_data.push(pixel[1]); // G
+        rgb_data.push(pixel[2]); // B
+    }
+    
+    // Create image XObject
+    let mut image_dict = Dictionary::new();
+    image_dict.set("Type", Object::Name(b"XObject".to_vec()));
+    image_dict.set("Subtype", Object::Name(b"Image".to_vec()));
+    image_dict.set("Width", Object::Integer(img_width as i64));
+    image_dict.set("Height", Object::Integer(img_height as i64));
+    image_dict.set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
+    image_dict.set("BitsPerComponent", Object::Integer(8));
+    image_dict.set("Length", Object::Integer(rgb_data.len() as i64));
+    
+    let image_stream = Stream::new(image_dict, rgb_data);
+    let image_id = doc.add_object(image_stream);
+    
+    // Create unique image name
+    let image_name = format!("Im{}", image_id.0);
+    
+    // Add image to page resources
+    {
+        let page_obj = doc.get_object_mut(page_id)?;
+        let page_dict = page_obj.as_dict_mut()?;
+        
+        if !page_dict.has(b"Resources") {
+            page_dict.set("Resources", Object::Dictionary(Dictionary::new()));
+        }
+    }
+    
+    {
+        let page_obj = doc.get_object_mut(page_id)?;
+        let page_dict = page_obj.as_dict_mut()?;
+        
+        if let Ok(resources_obj) = page_dict.get_mut(b"Resources") {
+            if let Ok(resources_dict) = resources_obj.as_dict_mut() {
+                if !resources_dict.has(b"XObject") {
+                    resources_dict.set("XObject", Object::Dictionary(Dictionary::new()));
+                }
+                
+                if let Ok(xobject_obj) = resources_dict.get_mut(b"XObject") {
+                    if let Ok(xobject_dict) = xobject_obj.as_dict_mut() {
+                        xobject_dict.set(image_name.as_bytes().to_vec(), Object::Reference(image_id));
+                    }
+                }
+            }
+        }
+    }
+    
+    // Create content stream to draw the image
+    let operations = vec![
+        // Save graphics state
+        Operation::new("q", vec![]),
+        
+        // Set transformation matrix: [a b c d e f]
+        // a = width scale, d = height scale, e = x position, f = y position
+        Operation::new("cm", vec![
+            Object::Real(scaled_width as f32),  // a: width
+            Object::Real(0.0),                   // b: rotation
+            Object::Real(0.0),                   // c: rotation
+            Object::Real(scaled_height as f32),  // d: height
+            Object::Real((x_pos + offset_x) as f32),  // e: x position
+            Object::Real((pdf_y + offset_y) as f32),  // f: y position
+        ]),
+        
+        // Draw the image (XObject)
+        Operation::new("Do", vec![Object::Name(image_name.as_bytes().to_vec())]),
+        
+        // Restore graphics state
+        Operation::new("Q", vec![]),
+    ];
+    
+    let content = Content { operations };
+    let content_data = content.encode()?;
+    
+    let mut stream_dict = Dictionary::new();
+    stream_dict.set("Length", Object::Integer(content_data.len() as i64));
+    let stream = Stream::new(stream_dict, content_data);
+    let stream_id = doc.add_object(stream);
+    
+    // Add stream to page contents
+    {
+        let page_obj = doc.get_object_mut(page_id)?;
+        let page_dict = page_obj.as_dict_mut()?;
+        
+        if let Ok(contents_obj) = page_dict.get_mut(b"Contents") {
+            match contents_obj {
+                Object::Reference(ref_id) => {
+                    let old_ref = *ref_id;
+                    *contents_obj = Object::Array(vec![
+                        Object::Reference(old_ref),
+                        Object::Reference(stream_id),
+                    ]);
+                }
+                Object::Array(ref mut arr) => {
+                    arr.push(Object::Reference(stream_id));
+                }
+                _ => {
+                    *contents_obj = Object::Array(vec![Object::Reference(stream_id)]);
+                }
+            }
+        } else {
+            page_dict.set("Contents", Object::Array(vec![Object::Reference(stream_id)]));
+        }
+    }
+    
+    Ok(())
+}
+
 /// Merge multiple PDFs into one
 fn merge_pdfs(pdf_bytes_list: Vec<Vec<u8>>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use lopdf::{Document, Object, Dictionary};
@@ -3141,8 +3334,13 @@ async fn generate_signed_pdf_for_template_with_filter(
         // Filter by submitter_id if provided
         if let Some(filter_id) = submitter_id {
             if submitter.id != filter_id {
+                println!("DEBUG: Skipping submitter {} (filter_id={})", submitter.id, filter_id);
                 continue; // Skip this submitter
+            } else {
+                println!("DEBUG: Including submitter {} (matches filter_id={})", submitter.id, filter_id);
             }
+        } else {
+            println!("DEBUG: Including submitter {} (no filter)", submitter.id);
         }
         
         if let Some(bulk_signatures) = &submitter.bulk_signatures {
@@ -3198,6 +3396,9 @@ async fn generate_signed_pdf_for_template_with_filter(
                                         position.page,
                                         sig.clone(),
                                     ));
+                                    
+                                    println!("DEBUG: Added signature - submitter_id={}, field_name={}, field_type={}, value_len={}", 
+                                             submitter.id, field_name, template_field.field_type, signature_value.len());
                                 }
                             }
                         }
@@ -3206,6 +3407,8 @@ async fn generate_signed_pdf_for_template_with_filter(
             }
         }
     }
+
+    println!("DEBUG: Total signatures collected: {} (filter: {:?})", all_signatures.len(), submitter_id);
 
     // Get global settings
     let user_settings = crate::database::queries::GlobalSettingsQueries::get_user_settings(pool, template.user_id as i32).await?
@@ -3245,7 +3448,8 @@ async fn generate_signed_pdf_for_template_with_filter(
         &all_signatures,
         &user_settings,
         dummy_submitter,
-    )?;
+        storage_service,
+    ).await?;
 
     Ok(signed_pdf)
 }

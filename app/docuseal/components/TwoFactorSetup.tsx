@@ -13,7 +13,6 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [setupData, setSetupData] = useState<TwoFactorSetupType | null>(null);
   const [verificationCode, setVerificationCode] = useState('');
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchSetupData();
@@ -21,16 +20,13 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
 
   const fetchSetupData = async () => {
     setLoading(true);
-    setError('');
     try {
       const response = await upstashService.setup2FA();
       if (response.success) {
         setSetupData(response.data);
-      } else {
-        setError(response.error || 'Failed to get 2FA setup data');
-      }
+      } 
     } catch (err) {
-      setError('An error occurred while setting up 2FA');
+      toast.error(err?.error || 'An error occurred while setting up 2FA');
     } finally {
       setLoading(false);
     }
@@ -38,12 +34,10 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
 
   const handleVerify = async () => {
     if (!setupData || !verificationCode.trim()) {
-      setError('Please enter the verification code');
+      toast.error('Please enter the verification code');
       return;
     }
-
     setLoading(true);
-    setError('');
     try {
       const response = await upstashService.verify2FA({
         secret: setupData.secret,
@@ -53,11 +47,9 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
       if (response.success) {
         toast.success('2FA setup completed successfully!');
         onSuccess();
-      } else {
-        setError(response.error || 'Invalid verification code');
       }
     } catch (err) {
-      setError('An error occurred during verification');
+      toast.error(err?.error || 'An error occurred during verification');
     } finally {
       setLoading(false);
     }
@@ -164,7 +156,7 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
                       disabled={loading || verificationCode.length !== 6}
                       sx={{
                         backgroundColor: 'white',
-                        color: '#667eea',
+                        color: 'black',
                         '&:hover': {
                           backgroundColor: 'rgba(255, 255, 255, 0.9)',
                         },
