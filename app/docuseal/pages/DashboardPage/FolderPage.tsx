@@ -210,12 +210,12 @@ const FolderPage: React.FC = () => {
         {templates.length > 0 && (
             <div>
                 <TemplatesGrid 
-                    templates={templates} 
-                    onRefresh={() => fetchData(currentPage)} 
-                    currentFolderId={Number(folderId)}
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={handlePageChange} />
+                  templates={templates} 
+                  onRefresh={() => fetchData(currentPage)} 
+                  currentFolderId={Number(folderId)}
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange} />
             </div>
         )}
         <NewTemplateModal

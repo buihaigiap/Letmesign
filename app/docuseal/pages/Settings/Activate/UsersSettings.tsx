@@ -76,7 +76,7 @@ const UsersSettings = () => {
           }
         }
       } else {
-        toast.error(response.message || 'Failed to delete user');
+        toast.error(response.error);
       }
     } catch (error) {
       console.error('Error deleting user:', error);

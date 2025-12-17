@@ -1083,7 +1083,7 @@ pub async fn update_user_invitation_handler(
         _ => return ApiResponse::unauthorized("Invalid user".to_string()),
     }
 
-    // Check if invitation exists and is not used
+    // Check if invitation exists
     let invitation = match sqlx::query_as::<_, crate::database::models::DbUserInvitation>(
         "SELECT * FROM user_invitations WHERE id = $1"
     )
@@ -1092,9 +1092,6 @@ pub async fn update_user_invitation_handler(
     .await
     {
         Ok(Some(inv)) => {
-            if inv.is_used {
-                return ApiResponse::bad_request("Cannot update used invitation".to_string());
-            }
             if inv.invited_by_user_id != Some(user_id) {
                 return ApiResponse::unauthorized("You can only update your own invitations".to_string());
             }
@@ -1127,11 +1124,12 @@ pub async fn update_user_invitation_handler(
 
     // Update the invitation
     match sqlx::query(
-        "UPDATE user_invitations SET name = $1, email = $2, role = $3 WHERE id = $4"
+        "UPDATE user_invitations SET name = $1, email = $2, role = $3, is_used = $4 WHERE id = $5"
     )
     .bind(&payload.name)
     .bind(&payload.email)
     .bind(&payload.role)
+    .bind(if email_changed { false } else { invitation.is_used }) // Reset is_used to false if email changed
     .bind(invitation_id)
     .execute(pool)
     .await
@@ -1252,7 +1250,7 @@ pub async fn delete_user_invitation_handler(
         _ => return ApiResponse::unauthorized("Invalid user".to_string()),
     }
 
-    // Check if invitation exists and is not used
+    // Check if invitation exists
     match sqlx::query_as::<_, crate::database::models::DbUserInvitation>(
         "SELECT * FROM user_invitations WHERE id = $1"
     )
@@ -1261,9 +1259,6 @@ pub async fn delete_user_invitation_handler(
     .await
     {
         Ok(Some(invitation)) => {
-            if invitation.is_used {
-                return ApiResponse::bad_request("Cannot delete used invitation".to_string());
-            }
             if invitation.invited_by_user_id != Some(user_id) {
                 return ApiResponse::unauthorized("You can only delete your own invitations".to_string());
             }
