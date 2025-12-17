@@ -37,6 +37,9 @@ use models::template::Template;
         routes::web::get_admin_team_members_handler,
         routes::web::update_user_invitation_handler,
         routes::web::delete_user_invitation_handler,
+        routes::web::get_api_key_handler,
+        routes::web::generate_api_key_handler,
+        routes::web::revoke_api_key_handler,
         routes::templates::get_folders,
         routes::templates::create_folder,
         routes::templates::get_folder,
@@ -76,8 +79,6 @@ use models::template::Template;
         routes::reminder_settings::get_reminder_settings,
         routes::reminder_settings::update_reminder_settings,
         routes::global_settings::get_user_settings,
-        // routes::subscription::get_subscription_status,
-        // routes::subscription::get_payment_link
     ),
     components(
         schemas(
@@ -118,10 +119,6 @@ use models::template::Template;
             routes::reminder_settings::UpdateReminderSettingsRequest,
             common::responses::ApiResponse<routes::reminder_settings::UserReminderSettingsResponse>,
             database::models::DbGlobalSettings
-            // models::user::UserSubscriptionStatus,
-            // models::user::CreatePaymentRequest,
-            // routes::subscription::SubscriptionStatusResponse,
-            // routes::subscription::PaymentLinkResponse
         )
     ),
     tags(
@@ -131,7 +128,6 @@ use models::template::Template;
         (name = "template_fields", description = "Template field management endpoints"),
         (name = "submissions", description = "Document submission endpoints"),
         (name = "submitters", description = "Submitter management endpoints")
-        // (name = "subscription", description = "Subscription and billing endpoints")
     ),
     security(("bearer_auth" = [])),
 )]
@@ -157,36 +153,11 @@ async fn main() {
     // Initialize database connection
     let pool = establish_connection().await.expect("Failed to connect to database");
 
-    // Check if migrations are needed by counting applied migrations
-    println!("Checking database migration status...");
-    match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations")
-        .fetch_one(&pool)
-        .await
-    {
-        Ok(count) => {
-            if count >= 8 {
-                println!("✅ Database schema is up to date ({} migrations applied), skipping migrations", count);
-            } else {
-                println!("Running database migrations...");
-                match run_migrations(&pool).await {
-                    Ok(_) => println!("✅ Database migrations completed successfully"),
-                    Err(e) => {
-                        println!("❌ Database migration failed: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-        }
-        Err(_) => {
-            println!("Running database migrations...");
-            match run_migrations(&pool).await {
-                Ok(_) => println!("✅ Database migrations completed successfully"),
-                Err(e) => {
-                    println!("❌ Database migration failed: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
+    // Run database migrations
+    println!("Running database migrations...");
+    if let Err(e) = run_migrations(&pool).await {
+        eprintln!("⚠️  Warning: Failed to run migrations: {}", e);
+        eprintln!("⚠️  Database schema may be out of date");
     }
 
     // Initialize CA infrastructure for digital signatures

@@ -75,6 +75,9 @@ pub fn create_router() -> Router<AppState> {
         .route("/auth/2fa/verify", post(verify_2fa_handler))
         .route("/auth/logout", post(logout_handler))
         .route("/auth/google-drive/status", get(google_drive_status_handler))
+        .route("/auth/api-key", get(get_api_key_handler))
+        .route("/auth/api-key/generate", post(generate_api_key_handler))
+        .route("/auth/api-key/revoke", post(revoke_api_key_handler))
         .merge(submissions::create_submission_router())
         .merge(reminder_settings::create_router())
         .merge(global_settings::create_router())
@@ -157,6 +160,13 @@ pub async fn register_handler(
 
     match UserQueries::create_user(pool, create_user).await {
         Ok(db_user) => {
+            // Generate API key for the new user
+            let api_key = crate::common::utils::generate_api_key();
+            match UserQueries::generate_user_api_key(pool, db_user.id, &api_key).await {
+                Ok(_) => println!("✅ Generated API key for user {}", db_user.id),
+                Err(e) => println!("⚠️  Warning: Failed to generate API key for user {}: {}", db_user.id, e),
+            }
+
             // Create default global settings for the new user
             let user_id_i32 = db_user.id as i32;
             match GlobalSettingsQueries::create_user_settings(pool, user_id_i32).await {
@@ -467,6 +477,13 @@ pub async fn activate_user(
 
     match UserQueries::create_user(pool, create_user).await {
         Ok(db_user) => {
+            // Generate API key for the new user
+            let api_key = crate::common::utils::generate_api_key();
+            match UserQueries::generate_user_api_key(pool, db_user.id, &api_key).await {
+                Ok(_) => println!("✅ Generated API key for user {}", db_user.id),
+                Err(e) => println!("⚠️  Warning: Failed to generate API key for user {}: {}", db_user.id, e),
+            }
+
             // Create default global settings for the new user
             let user_id_i32 = db_user.id as i32;
             match GlobalSettingsQueries::create_user_settings(pool, user_id_i32).await {
@@ -2115,3 +2132,95 @@ pub struct Verify2FALoginRequest {
     pub temp_token: String,
     pub code: String,
 }
+
+#[utoipa::path(
+    get,
+    path = "/api/auth/api-key",
+    tag = "auth",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Get current user's API key", body = ApiResponse),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn get_api_key_handler(
+    Extension(user_id): Extension<i64>,
+    State(state): State<AppState>,
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+    let pool = &state.lock().await.db_pool;
+    
+    match UserQueries::get_user_by_id(pool, user_id).await {
+        Ok(Some(db_user)) => {
+            let response = serde_json::json!({
+                "api_key": db_user.api_key
+            });
+            ApiResponse::success(response, "API key retrieved".to_string())
+        },
+        Ok(None) => ApiResponse::not_found("User not found".to_string()),
+        Err(e) => {
+            eprintln!("Failed to get user API key: {}", e);
+            ApiResponse::internal_error("Failed to retrieve API key".to_string())
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/api-key/generate",
+    tag = "auth",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Generate new API key for user", body = ApiResponse),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn generate_api_key_handler(
+    Extension(user_id): Extension<i64>,
+    State(state): State<AppState>,
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+    let pool = &state.lock().await.db_pool;
+    
+    let api_key = crate::common::utils::generate_api_key();
+    
+    match UserQueries::generate_user_api_key(pool, user_id, &api_key).await {
+        Ok(_) => {
+            let response = serde_json::json!({
+                "api_key": api_key
+            });
+            ApiResponse::success(response, "API key generated successfully".to_string())
+        },
+        Err(e) => {
+            eprintln!("Failed to generate API key: {}", e);
+            ApiResponse::internal_error("Failed to generate API key".to_string())
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/api-key/revoke",
+    tag = "auth",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Revoke current user's API key", body = ApiResponse),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn revoke_api_key_handler(
+    Extension(user_id): Extension<i64>,
+    State(state): State<AppState>,
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+    let pool = &state.lock().await.db_pool;
+    
+    match UserQueries::revoke_user_api_key(pool, user_id).await {
+        Ok(_) => {
+            ApiResponse::success(serde_json::json!({}), "API key revoked successfully".to_string())
+        },
+        Err(e) => {
+            eprintln!("Failed to revoke API key: {}", e);
+            ApiResponse::internal_error("Failed to revoke API key".to_string())
+        }
+    }
+}
+
+

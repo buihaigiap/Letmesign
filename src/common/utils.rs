@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use rand::{thread_rng, Rng};
+use base64::{Engine as _, engine::general_purpose};
 
 /// Replace template variables in content string
 /// Supports variables like {variable.name} and handles text processing
@@ -73,4 +75,12 @@ pub fn validate_email_template(subject: &str, body: &str) -> bool {
     }
 
     true
+}
+
+/// Generate a secure random API key
+pub fn generate_api_key() -> String {
+    let mut rng = thread_rng();
+    let mut bytes = [0u8; 32]; // 256 bits
+    rng.fill(&mut bytes);
+    general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }

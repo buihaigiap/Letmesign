@@ -122,6 +122,7 @@ pub struct DbUser {
     pub initials: Option<String>,
     pub two_factor_secret: Option<String>,
     pub two_factor_enabled: bool,
+    pub api_key: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

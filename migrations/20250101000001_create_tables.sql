@@ -36,3 +36,9 @@ CREATE INDEX IF NOT EXISTS idx_users_subscription_expires_at ON users(subscripti
 CREATE INDEX IF NOT EXISTS idx_users_free_usage_count ON users(free_usage_count);
 CREATE INDEX IF NOT EXISTS idx_users_account_id ON users(account_id);
 CREATE INDEX IF NOT EXISTS idx_users_archived_at ON users(archived_at);
+
+-- Add API key column to users table
+ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key TEXT UNIQUE;
+
+-- Create index for API key lookups
+CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key);

@@ -118,9 +118,9 @@ impl AccountQueries {
     /// Get all users for an account (excluding archived unless specified)
     pub async fn get_account_users(pool: &PgPool, account_id: i64, include_archived: bool) -> Result<Vec<DbUser>, sqlx::Error> {
         let query = if include_archived {
-            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, created_at, updated_at FROM users WHERE account_id = $1 ORDER BY created_at DESC"
+            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, api_key, created_at, updated_at FROM users WHERE account_id = $1 ORDER BY created_at DESC"
         } else {
-            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, created_at, updated_at FROM users WHERE account_id = $1 AND archived_at IS NULL ORDER BY created_at DESC"
+            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, api_key, created_at, updated_at FROM users WHERE account_id = $1 AND archived_at IS NULL ORDER BY created_at DESC"
         };
 
         let rows = sqlx::query(query)
@@ -147,6 +147,7 @@ impl AccountQueries {
                 initials: row.try_get("initials")?,
                 two_factor_secret: row.try_get("two_factor_secret")?,
                 two_factor_enabled: row.try_get("two_factor_enabled")?,
+                api_key: row.try_get("api_key")?,
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             });
@@ -174,7 +175,7 @@ impl AccountQueries {
             UPDATE users 
             SET archived_at = $1, updated_at = $2
             WHERE id = $3 AND account_id = $4
-            RETURNING id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, created_at, updated_at
+            RETURNING id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, api_key, created_at, updated_at
             "#
         )
         .bind(Utc::now())
@@ -201,6 +202,7 @@ impl AccountQueries {
             initials: row.try_get("initials")?,
             two_factor_secret: row.try_get("two_factor_secret")?,
             two_factor_enabled: row.try_get("two_factor_enabled")?,
+            api_key: row.try_get("api_key")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
@@ -213,7 +215,7 @@ impl AccountQueries {
             UPDATE users 
             SET archived_at = NULL, updated_at = $1
             WHERE id = $2 AND account_id = $3
-            RETURNING id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, created_at, updated_at
+            RETURNING id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, api_key, created_at, updated_at
             "#
         )
         .bind(Utc::now())
@@ -239,6 +241,7 @@ impl AccountQueries {
             initials: row.try_get("initials")?,
             two_factor_secret: row.try_get("two_factor_secret")?,
             two_factor_enabled: row.try_get("two_factor_enabled")?,
+            api_key: row.try_get("api_key")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
@@ -346,6 +349,7 @@ impl UserQueries {
                 initials: row.try_get("initials")?,
                 two_factor_secret: row.try_get("two_factor_secret")?,
                 two_factor_enabled: row.try_get("two_factor_enabled")?,
+                api_key: None, // Temporarily set to None until migration is applied
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             })),
@@ -394,6 +398,7 @@ impl UserQueries {
             initials: row.try_get("initials")?,
             two_factor_secret: row.try_get("two_factor_secret")?,
             two_factor_enabled: row.try_get("two_factor_enabled")?,
+            api_key: None, // Will be set later when API key is generated
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
@@ -425,6 +430,7 @@ impl UserQueries {
                 initials: row.try_get("initials")?,
                 two_factor_secret: row.try_get("two_factor_secret")?,
                 two_factor_enabled: row.try_get("two_factor_enabled")?,
+                api_key: None, // Temporarily set to None until migration is applied
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             })),
@@ -506,6 +512,89 @@ impl UserQueries {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn generate_user_api_key(pool: &PgPool, user_id: i64, api_key: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE users SET api_key = $1, updated_at = $2 WHERE id = $3"
+        )
+        .bind(api_key)
+        .bind(Utc::now())
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_user_by_api_key(pool: &PgPool, api_key: &str) -> Result<Option<DbUser>, sqlx::Error> {
+        let row = sqlx::query(
+            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, api_key, created_at, updated_at FROM users WHERE api_key = $1"
+        )
+        .bind(api_key)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(row) => Ok(Some(DbUser {
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                email: row.try_get("email")?,
+                password_hash: row.try_get("password_hash")?,
+                role: row.try_get("role")?,
+                is_active: row.try_get("is_active")?,
+                activation_token: row.try_get("activation_token")?,
+                account_id: row.try_get("account_id")?,
+                archived_at: row.try_get("archived_at")?,
+                subscription_status: row.try_get("subscription_status")?,
+                subscription_expires_at: row.try_get("subscription_expires_at")?,
+                free_usage_count: row.try_get("free_usage_count")?,
+                signature: row.try_get("signature")?,
+                initials: row.try_get("initials")?,
+                two_factor_secret: row.try_get("two_factor_secret")?,
+                two_factor_enabled: row.try_get("two_factor_enabled")?,
+                api_key: row.try_get("api_key")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn revoke_user_api_key(pool: &PgPool, user_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE users SET api_key = NULL, updated_at = $1 WHERE id = $2"
+        )
+        .bind(Utc::now())
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn generate_api_keys_for_existing_users(pool: &PgPool) -> Result<i64, sqlx::Error> {
+        use crate::common::utils::generate_api_key;
+
+        // Get all users without API keys
+        let rows = sqlx::query(
+            "SELECT id FROM users WHERE api_key IS NULL AND archived_at IS NULL"
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let mut updated_count = 0;
+
+        for row in rows {
+            let user_id: i64 = row.try_get("id")?;
+            let api_key = generate_api_key();
+
+            // Update user with new API key
+            UserQueries::generate_user_api_key(pool, user_id, &api_key).await?;
+            updated_count += 1;
+        }
+
+        Ok(updated_count)
     }
 }
 
