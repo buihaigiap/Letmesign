@@ -244,7 +244,18 @@ pub async fn create_submission(
                                     variables.insert("account.name", "DocuSeal Pro");
 
                                     let subject = replace_template_variables(&email_template.subject, &variables);
-                                    let body = replace_template_variables(&email_template.body, &variables);
+                                    let mut body = replace_template_variables(&email_template.body, &variables);
+
+                                    // If the template doesn't contain {submitter.link}, append the link by default
+                                    if !email_template.body.contains("{submitter.link}") {
+                                        if email_template.body_format == "html" {
+                                            let link_html = format!("<br><br><strong></strong> <a href=\"{}\">{}</a>", signature_link, signature_link);
+                                            body.push_str(&link_html);
+                                        } else {
+                                            let link_text = format!("\n\n{}", signature_link);
+                                            body.push_str(&link_text);
+                                        }
+                                    }
 
                                     // Generate attachments if needed
                                     let mut document_path = None;

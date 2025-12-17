@@ -206,7 +206,7 @@ const TemplateDetailPage = () => {
 
   return (
     <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap' , mt:2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: '0 0 50%' }}>
             <CreateTemplateButton
               onClick={() => navigate(-1)}
