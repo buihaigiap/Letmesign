@@ -48,7 +48,6 @@ const ConditionDialog: React.FC<ConditionDialogProps> = ({
     return field ? field.tempId : '';
   }, [dependentField, allFields]);
   
-  console.log('displayValue for Select:', displayValue);
   
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>

@@ -317,7 +317,8 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
                   onChange={(e) => {
                     const value = e.target.value;
                     setLocalDefaultValue(value);
-                    const newOptions = { ...currentOptions, defaultValue: value === 'none' ? '' : value };
+                    const isArray = Array.isArray(currentOptions);
+                    const newOptions = isArray ? { options: currentOptions, defaultValue: value === 'none' ? '' : value } : { ...currentOptions, defaultValue: value === 'none' ? '' : value };
                     updateField(tempId, { options: newOptions });
                   }}
                   onClick={(e) => e.stopPropagation()}
@@ -373,7 +374,7 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             fieldType !== 'image' && fieldType !== 'multiple' && 
             fieldType !== 'signature' && fieldType !== 'initials' &&
             fieldType !== 'file' && fieldType !== 'date' &&
-            fieldType !== 'number' &&
+            fieldType !== 'number' && fieldType !== 'radio' && fieldType !== 'select' &&
           (
           <>
           <FormControl fullWidth>
@@ -576,9 +577,10 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             </Box>
           )}
 
-          {/* Read-Only - hide for image, multiple, signature, initials, and file */}
+          {/* Read-Only - hide for image, multiple, signature, initials, file, radio, select */}
           {fieldType !== 'image' && fieldType !== 'multiple' &&
            fieldType !== 'signature' && fieldType !== 'initials' && fieldType !== 'file' &&
+           fieldType !== 'radio' && fieldType !== 'select' &&
             (
           <>
           {fieldType === 'date' ? (
@@ -807,8 +809,9 @@ const GripVerticalMenu: React.FC<GripVerticalMenuProps> = ({
             </Typography>
           </Box>
 
-          {/* Copy to All Pages - hide for image, multiple, and file */}
-          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'file' && (
+          {/* Copy to All Pages - hide for image, multiple, file, radio, select */}
+          {fieldType !== 'image' && fieldType !== 'multiple' && fieldType !== 'file' &&
+           fieldType !== 'radio' && fieldType !== 'select' && (
           <Box 
               onClick={(e) => {
                 e.stopPropagation();
