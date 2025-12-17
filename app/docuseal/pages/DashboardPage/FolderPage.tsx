@@ -38,7 +38,6 @@ const FolderPage: React.FC = () => {
   const { folderId } = useParams<{ folderId: string }>();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
   const [parentFolder, setParentFolder] = useState<Folder | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -118,13 +117,9 @@ const FolderPage: React.FC = () => {
   };
   const fetchData = async (page: number = 1) => {
     try {
-      setLoading(true);
       const allFolders = await upstashService.getFolders();
       const folderTemplates = await upstashService.getFolderTemplates(Number(folderId), page, 12);
-      console.log('folderTemplates response:', folderTemplates);
-      // Find the current folder in the tree
       const currentFolder = findFolderById(allFolders.data, Number(folderId));
-      // Get subfolders: the children of the current folder
       const subFolders = currentFolder?.children || [];
       setFolders(subFolders);
       setCurrentFolder(currentFolder);
@@ -136,13 +131,12 @@ const FolderPage: React.FC = () => {
         setParentFolder(null); // root, back to home
       }
       setTemplates(folderTemplates.data.templates || []);
-      setTotalPages(folderTemplates.data.totalPages || 1);
+      setTotalPages(folderTemplates.data.total_pages || 1);
       setCurrentPage(page);
     } catch (error) {
       console.error('Error fetching folder data:', error);
       toast.error('Error fetching folder data');
     } finally {
-      setLoading(false);
     }
   };
 
