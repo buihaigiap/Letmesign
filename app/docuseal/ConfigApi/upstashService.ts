@@ -42,6 +42,21 @@ const upstashService = {
         const url = '/api/auth/google-drive/status';
         return await axiosClient.get(url)
     },
+
+    // API Key APIs
+    getApiKey: async (): Promise<any> => {
+        const url = '/api/auth/api-key';
+        return await axiosClient.get(url)
+    },
+    generateApiKey: async (): Promise<any> => {
+        const url = '/api/auth/api-key/generate';
+        return await axiosClient.post(url)
+    },
+    revokeApiKey: async (): Promise<any> => {
+        const url = '/api/auth/api-key/revoke';
+        return await axiosClient.post(url)
+    },
+
     // Template APIs
     getTemplates: async (params?: { page?: number; limit?: number; search?: string }): Promise<any> => {
         const url = '/api/templates';

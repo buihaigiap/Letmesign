@@ -53,6 +53,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use crate::database::queries::UserQueries;
 
 pub async fn auth_middleware(mut request: Request, next: Next) -> Result<Response, StatusCode> {
     let auth_header = request
@@ -134,4 +135,220 @@ pub fn decode_jwt(token: &str, secret: &str) -> Result<Claims, StatusCode> {
         Ok(token_data) => Ok(token_data.claims),
         Err(_) => Err(StatusCode::UNAUTHORIZED),
     }
+}
+
+pub async fn api_key_auth_middleware(
+    mut request: Request,
+    next: Next
+) -> Result<Response, StatusCode> {
+    // Try to get API key from X-API-Key header first
+    let api_key = request
+        .headers()
+        .get("X-API-Key")
+        .and_then(|header| header.to_str().ok())
+        .or_else(|| {
+            // Fallback to Authorization header with Bearer prefix
+            request
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|header| header.to_str().ok())
+                .and_then(|header| header.strip_prefix("Bearer "))
+        });
+
+    let api_key = match api_key {
+        Some(key) => key,
+        None => {
+            println!("No API key provided");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Try to get database pool from request extensions first
+    let pool_result = if let Some(pool) = request.extensions().get::<sqlx::PgPool>() {
+        // Clone the pool reference
+        Ok(pool.clone())
+    } else {
+        // Fallback: create a new connection (not ideal but works)
+        use sqlx::postgres::PgPoolOptions;
+        use std::env;
+
+        let database_url = env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://user:password@localhost/db".to_string());
+
+        PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&database_url)
+            .await
+    };
+
+    let pool = match pool_result {
+        Ok(pool) => pool,
+        Err(e) => {
+            println!("Failed to get database connection: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    // Find user by API key
+    match UserQueries::get_user_by_api_key(&pool, api_key).await {
+        Ok(Some(db_user)) => {
+            // Check if user is active
+            if !db_user.is_active {
+                println!("User {} is not active", db_user.id);
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+
+            // Check if user is archived
+            if db_user.archived_at.is_some() {
+                println!("User {} is archived", db_user.id);
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+
+            // Role is already a Role enum in db_user
+            let role = db_user.role;
+
+            // Add user_id and role to request extensions
+            request.extensions_mut().insert(db_user.id);
+            request.extensions_mut().insert(role);
+
+            println!("API key authentication successful for user {}", db_user.id);
+            Ok(next.run(request).await)
+        },
+        Ok(None) => {
+            println!("Invalid API key provided");
+            Err(StatusCode::UNAUTHORIZED)
+        },
+        Err(e) => {
+            println!("Database error during API key authentication: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+pub async fn combined_auth_middleware(
+    mut request: Request,
+    next: Next
+) -> Result<Response, StatusCode> {
+    // First try API key authentication
+    let api_key = request
+        .headers()
+        .get("X-API-Key")
+        .and_then(|header| header.to_str().ok())
+        .or_else(|| {
+            request
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|header| header.to_str().ok())
+                .and_then(|header| {
+                    if header.starts_with("Bearer ") {
+                        let token = header.strip_prefix("Bearer ").unwrap();
+                        // Check if it's an API key (no dots) or JWT (contains dots)
+                        if !token.contains('.') { // API keys don't contain dots
+                            Some(token)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+        });
+
+    if let Some(api_key) = api_key {
+        // Try API key authentication
+        let pool_result = if let Some(pool) = request.extensions().get::<sqlx::PgPool>() {
+            Ok(pool.clone())
+        } else {
+            use sqlx::postgres::PgPoolOptions;
+            use std::env;
+
+            let database_url = env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://user:password@localhost/db".to_string());
+
+            PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&database_url)
+                .await
+        };
+
+        let pool = match pool_result {
+            Ok(pool) => pool,
+            Err(e) => {
+                println!("Failed to get database connection: {}", e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        };
+
+        match UserQueries::get_user_by_api_key(&pool, api_key).await {
+            Ok(Some(db_user)) => {
+                if !db_user.is_active {
+                    println!("User {} is not active", db_user.id);
+                    return Err(StatusCode::UNAUTHORIZED);
+                }
+
+                if db_user.archived_at.is_some() {
+                    println!("User {} is archived", db_user.id);
+                    return Err(StatusCode::UNAUTHORIZED);
+                }
+
+                let role = db_user.role;
+                request.extensions_mut().insert(db_user.id);
+                request.extensions_mut().insert(role);
+
+                println!("API key authentication successful for user {}", db_user.id);
+                return Ok(next.run(request).await);
+            },
+            Ok(None) => {
+                // API key not found, continue to JWT authentication
+            },
+            Err(e) => {
+                println!("Database error during API key authentication: {}", e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    }
+
+    // If API key authentication failed or not provided, try JWT authentication
+    let auth_header = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|header| header.to_str().ok())
+        .and_then(|header| header.strip_prefix("Bearer "));
+
+    let token = match auth_header {
+        Some(token) => token,
+        None => {
+            println!("No authentication provided");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Verify JWT
+    let claims = match verify_jwt(token, &std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string())) {
+        Ok(claims) => claims,
+        Err(_) => {
+            println!("Invalid JWT token");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Get user role from claims
+    let role = match claims.role.as_str() {
+        "Admin" => Role::Admin,
+        "Editor" => Role::Editor,
+        "Member" => Role::Member,
+        "Agent" => Role::Agent,
+        "Viewer" => Role::Viewer,
+        _ => {
+            println!("Invalid role in JWT: {}", claims.role);
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Add user_id and role to request extensions
+    request.extensions_mut().insert(claims.sub);
+    request.extensions_mut().insert(role);
+
+    println!("JWT authentication successful for user {}", claims.sub);
+    Ok(next.run(request).await)
 }

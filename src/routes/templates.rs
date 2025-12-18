@@ -372,32 +372,39 @@ pub fn create_template_router() -> Router<AppState> {
         .route("/folders/:id", delete(delete_folder))
         .route("/folders/:id/templates", get(get_folder_templates))
         .route("/templates/:template_id/move/:folder_id", put(move_template_to_folder))
-        // Template routes
-        .route("/templates", get(get_templates))
-        .route("/templates", post(create_template))
-        .route("/templates/:id", get(get_template))
-        .route("/templates/:id/full-info", get(get_template_full_info))
-        .route("/templates/:id", put(update_template))
-        .route("/templates/:id", delete(delete_template))
-        .route("/templates/:id/clone", post(clone_template))
+        // Template routes (excluding /templates which is handled by templates_auth_routes)
+        // .route("/templates", post(create_template))
+        // .route("/templates/:id", get(get_template))
         .route("/templates/html", post(create_template_from_html))
-        .route("/templates/pdf", post(create_template_from_pdf))
+        // .route("/templates/pdf", post(create_template_from_pdf))
         .route("/templates/docx", post(create_template_from_docx))
-        .route("/templates/from-file", post(create_template_from_file))
         .route("/templates/google_drive_documents", post(create_template_from_google_drive))
         .route("/templates/merge", post(merge_templates))
         // Template Fields routes
         .route("/templates/:template_id/fields", get(get_template_fields))
-        .route("/templates/:template_id/fields", post(create_template_field))
+        // .route("/templates/:template_id/fields", post(create_template_field))
         .route("/templates/:template_id/fields/upload", post(upload_template_field_file))
-        .route("/templates/:template_id/fields/:field_id", put(update_template_field))
-        .route("/templates/:template_id/fields/:field_id", delete(delete_template_field))
         // File upload must come before wildcard route
         .route("/files/upload", post(upload_file))
         .layer(middleware::from_fn(auth_middleware));
 
+    // Templates routes with combined authentication (JWT + API Key)
+    let templates_auth_routes = Router::new()
+    // Template routes (excluding /templates which is handled by templates_auth_routes)
+        .route("/templates", get(get_templates))
+        .route("/templates/:id/full-info", get(get_template_full_info))
+        .route("/templates/from-file", post(create_template_from_file))
+        .route("/templates/:id", delete(delete_template))
+        .route("/templates/:id/clone", post(clone_template))
+        .route("/templates/:id", put(update_template))
+    // Template Fields routes
+        .route("/templates/:template_id/fields", post(create_template_field))
+        .route("/templates/:template_id/fields/:field_id", put(update_template_field))
+        .route("/templates/:template_id/fields/:field_id", delete(delete_template_field))
+
+        .layer(middleware::from_fn(crate::common::jwt::combined_auth_middleware));
     // Merge public and authenticated routes
-    public_routes.merge(auth_routes)
+    public_routes.merge(auth_routes).merge(templates_auth_routes)
 }
 
 // ===== TEMPLATE FOLDER ENDPOINTS =====
@@ -1081,72 +1088,143 @@ pub async fn get_templates(
 
 #[utoipa::path(
     get,
-    path = "/api/templates/{id}",
-    params(
-        ("id" = i64, Path, description = "Template ID")
-    ),
+    path = "/api/templates",
     responses(
-        (status = 200, description = "Template found", body = ApiResponse<Template>),
-        (status = 404, description = "Template not found", body = ApiResponse<Template>),
-        (status = 500, description = "Internal server error", body = ApiResponse<Template>)
+        (status = 200, description = "Templates retrieved successfully", body = ApiResponse<serde_json::Value>),
+        (status = 500, description = "Internal server error", body = ApiResponse<serde_json::Value>)
     ),
     security(("bearer_auth" = [])),
     tag = "templates"
 )]
-pub async fn get_template(
+pub async fn get_templates_api_key(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
+    Query(params): Query<GetTemplatesQuery>,
     Extension(user_id): Extension<i64>,
-) -> (StatusCode, Json<ApiResponse<Template>>) {
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
     let pool = &state.lock().await.db_pool;
 
-    match TemplateQueries::get_template_by_id(pool, id).await {
-        Ok(Some(db_template)) => {
-            // Get user role to check permissions
-            match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
-                Ok(Some(user)) => {
-                    // Allow access if user is the owner OR if user has Editor/Admin/Member role
-                    let has_access = db_template.user_id == user_id || 
-                                   matches!(user.role, crate::models::role::Role::Editor | crate::models::role::Role::Admin | crate::models::role::Role::Member);
-                    
-                    if !has_access {
-                        return ApiResponse::not_found("Template not found".to_string());
+    let page = params.page.unwrap_or(1).max(1);
+    let limit = params.limit.unwrap_or(12).max(1).min(100); // Max 100 per page
+    let offset = (page - 1) * limit;
+    let search = params.search.as_deref().unwrap_or("").trim();
+
+    match TemplateQueries::get_team_templates_with_search(pool, user_id, offset, limit, search).await {
+        Ok(db_templates) => {
+            let mut templates = Vec::new();
+            for db_template in db_templates {
+                // Get user name for this template's owner
+                let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
+                    Ok(Some(user)) => {
+                        // Use name if available, fallback to email
+                        let display_name = if !user.name.is_empty() {
+                            user.name.clone()
+                        } else {
+                            user.email.clone()
+                        };
+                        Some(display_name)
                     }
-                }
-                _ => return ApiResponse::forbidden("User not found".to_string()),
+                    Ok(None) => {
+                        eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
+                        None
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
+                        None
+                    }
+                };
+                
+                let mut template = convert_db_template_to_template_without_fields(db_template);
+                template.user_name = user_name;
+                templates.push(template);
             }
-            match convert_db_template_to_template_with_fields(db_template, pool).await {
-                Ok(mut template) => {
-                    // Get user name for this template's owner
-                    let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, template.user_id).await {
-                        Ok(Some(user)) => {
-                            // Use name if available, fallback to email
-                            let display_name = if !user.name.is_empty() {
-                                user.name.clone()
-                            } else {
-                                user.email.clone()
-                            };
-                            Some(display_name)
-                        }
-                        Ok(None) => {
-                            eprintln!("⚠️ User {} not found for template {}", template.user_id, template.id);
-                            None
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Error getting user {} for template {}: {}", template.user_id, template.id, e);
-                            None
-                        }
-                    };
-                    template.user_name = user_name;
-                    ApiResponse::success(template, "Template retrieved successfully".to_string())
+
+            // Get total count
+            match TemplateQueries::get_team_templates_count_with_search(pool, user_id, search).await {
+                Ok(total) => {
+                    let response = serde_json::json!({
+                        "templates": templates,
+                        "total": total,
+                        "page": page,
+                        "limit": limit,
+                        "total_pages": ((total as f64) / (limit as f64)).ceil() as i64
+                    });
+                    ApiResponse::success(response, "Templates retrieved successfully".to_string())
                 }
-                Err(e) => ApiResponse::internal_error(format!("Failed to load template fields: {}", e)),
+                Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
             }
         }
-        Ok(None) => ApiResponse::not_found("Template not found".to_string()),
-        Err(e) => ApiResponse::internal_error(format!("Failed to retrieve template: {}", e)),
+        Err(e) => ApiResponse::internal_error(format!("Failed to retrieve templates: {}", e)),
     }
 }
+
+// #[utoipa::path(
+//     get,
+//     path = "/api/templates/{id}",
+//     params(
+//         ("id" = i64, Path, description = "Template ID")
+//     ),
+//     responses(
+//         (status = 200, description = "Template found", body = ApiResponse<Template>),
+//         (status = 404, description = "Template not found", body = ApiResponse<Template>),
+//         (status = 500, description = "Internal server error", body = ApiResponse<Template>)
+//     ),
+//     security(("bearer_auth" = [])),
+//     tag = "templates"
+// )]
+// pub async fn get_template(
+//     State(state): State<AppState>,
+//     Path(id): Path<i64>,
+//     Extension(user_id): Extension<i64>,
+// ) -> (StatusCode, Json<ApiResponse<Template>>) {
+//     let pool = &state.lock().await.db_pool;
+
+//     match TemplateQueries::get_template_by_id(pool, id).await {
+//         Ok(Some(db_template)) => {
+//             // Get user role to check permissions
+//             match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
+//                 Ok(Some(user)) => {
+//                     // Allow access if user is the owner OR if user has Editor/Admin/Member role
+//                     let has_access = db_template.user_id == user_id || 
+//                                    matches!(user.role, crate::models::role::Role::Editor | crate::models::role::Role::Admin | crate::models::role::Role::Member);
+                    
+//                     if !has_access {
+//                         return ApiResponse::not_found("Template not found".to_string());
+//                     }
+//                 }
+//                 _ => return ApiResponse::forbidden("User not found".to_string()),
+//             }
+//             match convert_db_template_to_template_with_fields(db_template, pool).await {
+//                 Ok(mut template) => {
+//                     // Get user name for this template's owner
+//                     let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, template.user_id).await {
+//                         Ok(Some(user)) => {
+//                             // Use name if available, fallback to email
+//                             let display_name = if !user.name.is_empty() {
+//                                 user.name.clone()
+//                             } else {
+//                                 user.email.clone()
+//                             };
+//                             Some(display_name)
+//                         }
+//                         Ok(None) => {
+//                             eprintln!("⚠️ User {} not found for template {}", template.user_id, template.id);
+//                             None
+//                         }
+//                         Err(e) => {
+//                             eprintln!("❌ Error getting user {} for template {}: {}", template.user_id, template.id, e);
+//                             None
+//                         }
+//                     };
+//                     template.user_name = user_name;
+//                     ApiResponse::success(template, "Template retrieved successfully".to_string())
+//                 }
+//                 Err(e) => ApiResponse::internal_error(format!("Failed to load template fields: {}", e)),
+//             }
+//         }
+//         Ok(None) => ApiResponse::not_found("Template not found".to_string()),
+//         Err(e) => ApiResponse::internal_error(format!("Failed to retrieve template: {}", e)),
+//     }
+// }
 
 #[utoipa::path(
     put,
@@ -1364,109 +1442,109 @@ pub async fn clone_template(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/templates",
-    request_body = CreateTemplateRequest,
-    responses(
-        (status = 201, description = "Template created successfully", body = ApiResponse<Template>),
-        (status = 500, description = "Internal server error", body = ApiResponse<Template>)
-    ),
-    security(("bearer_auth" = [])),
-    tag = "templates"
-)]
-pub async fn create_template(
-    State(state): State<AppState>,
-    Extension(user_id): Extension<i64>,
-    Json(payload): Json<CreateTemplateRequest>,
-) -> (StatusCode, Json<ApiResponse<Template>>) {
-    let pool = &state.lock().await.db_pool;
+// #[utoipa::path(
+//     post,
+//     path = "/api/templates",
+//     request_body = CreateTemplateRequest,
+//     responses(
+//         (status = 201, description = "Template created successfully", body = ApiResponse<Template>),
+//         (status = 500, description = "Internal server error", body = ApiResponse<Template>)
+//     ),
+//     security(("bearer_auth" = [])),
+//     tag = "templates"
+// )]
+// pub async fn create_template(
+//     State(state): State<AppState>,
+//     Extension(user_id): Extension<i64>,
+//     Json(payload): Json<CreateTemplateRequest>,
+// ) -> (StatusCode, Json<ApiResponse<Template>>) {
+//     let pool = &state.lock().await.db_pool;
 
-    // Get user's account_id
-    let user = match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
-        Ok(Some(user)) => user,
-        Ok(None) => return ApiResponse::not_found("User not found".to_string()),
-        Err(e) => return ApiResponse::internal_error(format!("Database error: {}", e)),
-    };
+//     // Get user's account_id
+//     let user = match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
+//         Ok(Some(user)) => user,
+//         Ok(None) => return ApiResponse::not_found("User not found".to_string()),
+//         Err(e) => return ApiResponse::internal_error(format!("Database error: {}", e)),
+//     };
 
-    // Decode base64 document
-    let document_data = match general_purpose::STANDARD.decode(&payload.document) {
-        Ok(data) => data,
-        Err(e) => return ApiResponse::bad_request(format!("Invalid base64 document: {}", e)),
-    };
+//     // Decode base64 document
+//     let document_data = match general_purpose::STANDARD.decode(&payload.document) {
+//         Ok(data) => data,
+//         Err(e) => return ApiResponse::bad_request(format!("Invalid base64 document: {}", e)),
+//     };
 
-    // Initialize storage service
-    let storage = match StorageService::new().await {
-        Ok(storage) => storage,
-        Err(e) => return ApiResponse::internal_error(format!("Failed to initialize storage: {}", e)),
-    };
+//     // Initialize storage service
+//     let storage = match StorageService::new().await {
+//         Ok(storage) => storage,
+//         Err(e) => return ApiResponse::internal_error(format!("Failed to initialize storage: {}", e)),
+//     };
 
-    // Generate filename and upload document
-    let filename = format!("{}.txt", payload.name.to_lowercase().replace(" ", "_"));
-    let file_key = match storage.upload_file(document_data, &filename, "text/plain").await {
-        Ok(key) => key,
-        Err(e) => return ApiResponse::internal_error(format!("Failed to upload document: {}", e)),
-    };
+//     // Generate filename and upload document
+//     let filename = format!("{}.txt", payload.name.to_lowercase().replace(" ", "_"));
+//     let file_key = match storage.upload_file(document_data, &filename, "text/plain").await {
+//         Ok(key) => key,
+//         Err(e) => return ApiResponse::internal_error(format!("Failed to upload document: {}", e)),
+//     };
 
-    // Generate unique slug
-    let slug = format!("template-{}-{}", payload.name.to_lowercase().replace(" ", "-"), chrono::Utc::now().timestamp());
+//     // Generate unique slug
+//     let slug = format!("template-{}-{}", payload.name.to_lowercase().replace(" ", "-"), chrono::Utc::now().timestamp());
 
-    // Create template in database
-    let create_template = CreateTemplate {
-        name: payload.name.clone(),
-        slug: slug.clone(),
-        user_id: user_id,
-        account_id: user.account_id,
-        folder_id: payload.folder_id,
-        documents: Some(serde_json::json!([{
-            "filename": filename,
-            "content_type": "text/plain",
-            "size": 0,
-            "url": file_key
-        }])),
-    };
+//     // Create template in database
+//     let create_template = CreateTemplate {
+//         name: payload.name.clone(),
+//         slug: slug.clone(),
+//         user_id: user_id,
+//         account_id: user.account_id,
+//         folder_id: payload.folder_id,
+//         documents: Some(serde_json::json!([{
+//             "filename": filename,
+//             "content_type": "text/plain",
+//             "size": 0,
+//             "url": file_key
+//         }])),
+//     };
 
-    match TemplateQueries::create_template(pool, create_template).await {
-        Ok(db_template) => {
-            let template_id = db_template.id;
+//     match TemplateQueries::create_template(pool, create_template).await {
+//         Ok(db_template) => {
+//             let template_id = db_template.id;
 
-            // Create fields if provided
-            if let Some(fields) = payload.fields {
-                for field_req in fields {
-                    let create_field = CreateTemplateField {
-                        template_id,
-                        name: field_req.name,
-                        field_type: field_req.field_type,
-                        required: field_req.required,
-                        display_order: field_req.display_order.unwrap_or(0),
-                        position: field_req.position.map(|p| serde_json::to_value(p).unwrap_or(serde_json::Value::Null)),
-                        options: field_req.options,
-                        metadata: None,
-                        partner: field_req.partner,
-                    };
+//             // Create fields if provided
+//             if let Some(fields) = payload.fields {
+//                 for field_req in fields {
+//                     let create_field = CreateTemplateField {
+//                         template_id,
+//                         name: field_req.name,
+//                         field_type: field_req.field_type,
+//                         required: field_req.required,
+//                         display_order: field_req.display_order.unwrap_or(0),
+//                         position: field_req.position.map(|p| serde_json::to_value(p).unwrap_or(serde_json::Value::Null)),
+//                         options: field_req.options,
+//                         metadata: None,
+//                         partner: field_req.partner,
+//                     };
 
-                    if let Err(e) = crate::database::queries::TemplateFieldQueries::create_template_field(pool, create_field).await {
-                        // Try to clean up template if field creation fails
-                        let _ = TemplateQueries::delete_template(pool, template_id).await;
-                        return ApiResponse::internal_error(format!("Failed to create template field: {}", e));
-                    }
-                }
-            }
+//                     if let Err(e) = crate::database::queries::TemplateFieldQueries::create_template_field(pool, create_field).await {
+//                         // Try to clean up template if field creation fails
+//                         let _ = TemplateQueries::delete_template(pool, template_id).await;
+//                         return ApiResponse::internal_error(format!("Failed to create template field: {}", e));
+//                     }
+//                 }
+//             }
 
-            match convert_db_template_to_template_with_fields(db_template, pool).await {
-                Ok(template) => ApiResponse::created(template, "Template created successfully".to_string()),
-                Err(e) => {
-                    // Try to clean up template if loading fields fails
-                    let _ = TemplateQueries::delete_template(pool, template_id).await;
-                    ApiResponse::internal_error(format!("Failed to load template fields: {}", e))
-                }
-            }
-        }
-        Err(e) => {
-            ApiResponse::internal_error(format!("Failed to create template: {}", e))
-        }
-    }
-}
+//             match convert_db_template_to_template_with_fields(db_template, pool).await {
+//                 Ok(template) => ApiResponse::created(template, "Template created successfully".to_string()),
+//                 Err(e) => {
+//                     // Try to clean up template if loading fields fails
+//                     let _ = TemplateQueries::delete_template(pool, template_id).await;
+//                     ApiResponse::internal_error(format!("Failed to load template fields: {}", e))
+//                 }
+//             }
+//         }
+//         Err(e) => {
+//             ApiResponse::internal_error(format!("Failed to create template: {}", e))
+//         }
+//     }
+// }
 
 // Placeholder handlers for creating templates from different sources
 // These would need actual implementation for PDF/HTML processing
@@ -1553,109 +1631,109 @@ pub async fn create_template_from_html(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/templates/pdf",
-    request_body = CreateTemplateFromPdfRequest,
-    responses(
-        (status = 201, description = "Template created from PDF", body = ApiResponse<Template>),
-        (status = 500, description = "Internal server error", body = ApiResponse<Template>)
-    ),
-    security(("bearer_auth" = [])),
-    tag = "templates"
-)]
-pub async fn create_template_from_pdf(
-    State(state): State<AppState>,
-    Extension(user_id): Extension<i64>,
-    mut multipart: Multipart,
-) -> (StatusCode, Json<ApiResponse<Template>>) {
-    let pool = &state.lock().await.db_pool;
+// #[utoipa::path(
+//     post,
+//     path = "/api/templates/pdf",
+//     request_body = CreateTemplateFromPdfRequest,
+//     responses(
+//         (status = 201, description = "Template created from PDF", body = ApiResponse<Template>),
+//         (status = 500, description = "Internal server error", body = ApiResponse<Template>)
+//     ),
+//     security(("bearer_auth" = [])),
+//     tag = "templates"
+// )]
+// pub async fn create_template_from_pdf(
+//     State(state): State<AppState>,
+//     Extension(user_id): Extension<i64>,
+//     mut multipart: Multipart,
+// ) -> (StatusCode, Json<ApiResponse<Template>>) {
+//     let pool = &state.lock().await.db_pool;
 
-    // Initialize storage service
-    let storage = match StorageService::new().await {
-        Ok(storage) => storage,
-        Err(e) => return ApiResponse::internal_error(format!("Failed to initialize storage: {}", e)),
-    };
+//     // Initialize storage service
+//     let storage = match StorageService::new().await {
+//         Ok(storage) => storage,
+//         Err(e) => return ApiResponse::internal_error(format!("Failed to initialize storage: {}", e)),
+//     };
 
-    let mut pdf_data = Vec::new();
-    let mut filename = String::new();
-    let mut template_name = String::new();
+//     let mut pdf_data = Vec::new();
+//     let mut filename = String::new();
+//     let mut template_name = String::new();
 
-    // Parse multipart form data
-    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
-        let field_name = field.name().unwrap_or("").to_string();
+//     // Parse multipart form data
+//     while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+//         let field_name = field.name().unwrap_or("").to_string();
 
-        match field_name.as_str() {
-            "pdf" => {
-                filename = field.file_name().unwrap_or("template.pdf").to_string();
-                pdf_data = field.bytes().await.unwrap_or_default().to_vec();
-            }
-            "name" => {
-                template_name = String::from_utf8(field.bytes().await.unwrap_or_default().to_vec())
-                    .unwrap_or_else(|_| "Untitled Template".to_string());
-            }
-            _ => {}
-        }
-    }
+//         match field_name.as_str() {
+//             "pdf" => {
+//                 filename = field.file_name().unwrap_or("template.pdf").to_string();
+//                 pdf_data = field.bytes().await.unwrap_or_default().to_vec();
+//             }
+//             "name" => {
+//                 template_name = String::from_utf8(field.bytes().await.unwrap_or_default().to_vec())
+//                     .unwrap_or_else(|_| "Untitled Template".to_string());
+//             }
+//             _ => {}
+//         }
+//     }
 
-    if pdf_data.is_empty() {
-        return ApiResponse::bad_request("PDF file is required".to_string());
-    }
+//     if pdf_data.is_empty() {
+//         return ApiResponse::bad_request("PDF file is required".to_string());
+//     }
 
-    if template_name.is_empty() {
-        template_name = "PDF Template".to_string();
-    }
+//     if template_name.is_empty() {
+//         template_name = "PDF Template".to_string();
+//     }
 
-    // Upload file to storage
-    let file_key = match storage.upload_file(pdf_data, &filename, "application/pdf").await {
-        Ok(key) => key,
-        Err(e) => return ApiResponse::internal_error(format!("Failed to upload file: {}", e)),
-    };
+//     // Upload file to storage
+//     let file_key = match storage.upload_file(pdf_data, &filename, "application/pdf").await {
+//         Ok(key) => key,
+//         Err(e) => return ApiResponse::internal_error(format!("Failed to upload file: {}", e)),
+//     };
 
-    // Generate unique slug
-    let slug = format!("pdf-{}-{}", template_name.to_lowercase().replace(" ", "-"), chrono::Utc::now().timestamp());
+//     // Generate unique slug
+//     let slug = format!("pdf-{}-{}", template_name.to_lowercase().replace(" ", "-"), chrono::Utc::now().timestamp());
 
-    // Get user's account_id
-    let account_id = match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
-        Ok(Some(user)) => user.account_id,
-        Ok(None) => return ApiResponse::not_found("User not found".to_string()),
-        Err(e) => return ApiResponse::internal_error(format!("Failed to get user: {}", e)),
-    };
+//     // Get user's account_id
+//     let account_id = match crate::database::queries::UserQueries::get_user_by_id(pool, user_id).await {
+//         Ok(Some(user)) => user.account_id,
+//         Ok(None) => return ApiResponse::not_found("User not found".to_string()),
+//         Err(e) => return ApiResponse::internal_error(format!("Failed to get user: {}", e)),
+//     };
 
-    // Create template in database
-    let create_template = CreateTemplate {
-        name: template_name.clone(),
-        slug: slug.clone(),
-        user_id: user_id,
-        account_id,
-        folder_id: None, // PDF uploads don't specify folder initially
-        // fields: None, // TODO: Extract fields from PDF - REMOVED
-        documents: Some(serde_json::json!([{
-            "filename": filename,
-            "content_type": "application/pdf",
-            "size": 0,
-            "url": file_key
-        }])),
-    };
+//     // Create template in database
+//     let create_template = CreateTemplate {
+//         name: template_name.clone(),
+//         slug: slug.clone(),
+//         user_id: user_id,
+//         account_id,
+//         folder_id: None, // PDF uploads don't specify folder initially
+//         // fields: None, // TODO: Extract fields from PDF - REMOVED
+//         documents: Some(serde_json::json!([{
+//             "filename": filename,
+//             "content_type": "application/pdf",
+//             "size": 0,
+//             "url": file_key
+//         }])),
+//     };
 
-    match TemplateQueries::create_template(pool, create_template).await {
-        Ok(db_template) => {
-            match convert_db_template_to_template_with_fields(db_template, pool).await {
-                Ok(template) => ApiResponse::created(template, "Template created from PDF successfully".to_string()),
-                Err(e) => {
-                    // Try to delete uploaded file if database operation fails
-                    let _ = storage.delete_file(&file_key).await;
-                    ApiResponse::internal_error(format!("Failed to load template fields: {}", e))
-                }
-            }
-        }
-        Err(e) => {
-            // Try to delete uploaded file if database operation fails
-            let _ = storage.delete_file(&file_key).await;
-            ApiResponse::internal_error(format!("Failed to create template: {}", e))
-        }
-    }
-}
+//     match TemplateQueries::create_template(pool, create_template).await {
+//         Ok(db_template) => {
+//             match convert_db_template_to_template_with_fields(db_template, pool).await {
+//                 Ok(template) => ApiResponse::created(template, "Template created from PDF successfully".to_string()),
+//                 Err(e) => {
+//                     // Try to delete uploaded file if database operation fails
+//                     let _ = storage.delete_file(&file_key).await;
+//                     ApiResponse::internal_error(format!("Failed to load template fields: {}", e))
+//                 }
+//             }
+//         }
+//         Err(e) => {
+//             // Try to delete uploaded file if database operation fails
+//             let _ = storage.delete_file(&file_key).await;
+//             ApiResponse::internal_error(format!("Failed to create template: {}", e))
+//         }
+//     }
+// }
 
 #[utoipa::path(
     post,

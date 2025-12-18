@@ -6,7 +6,9 @@ mod database;
 mod constants;
 
 use axum::Router;
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, State};
+use axum::middleware::{self, Next};
+use axum::http::Request;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -48,13 +50,13 @@ use models::template::Template;
         routes::templates::get_folder_templates,
         routes::templates::move_template_to_folder,
         routes::templates::get_templates,
-        routes::templates::get_template,
+        // routes::templates::get_template,
         routes::templates::get_template_full_info,
         routes::templates::update_template,
         routes::templates::delete_template,
         routes::templates::clone_template,
         routes::templates::create_template_from_html,
-        routes::templates::create_template_from_pdf,
+        // routes::templates::create_template_from_pdf,
         routes::templates::create_template_from_docx,
         routes::templates::merge_templates,
         routes::templates::download_file,
@@ -245,6 +247,11 @@ async fn main() {
         .nest_service("/assets", ServeDir::new("app/docuseal/dist/assets"))
         .nest_service("/uploads", ServeDir::new("uploads"))
         .fallback_service(serve_dir.fallback(spa_fallback))
+        .layer(axum::middleware::from_fn_with_state(app_state.clone(), |State(state): State<Arc<Mutex<AppStateData>>>, mut request: Request<axum::body::Body>, next: Next| async move {
+            let pool = state.lock().await.db_pool.clone();
+            request.extensions_mut().insert(pool);
+            Ok::<_, axum::http::StatusCode>(next.run(request).await)
+        }))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB limit for file uploads
         .layer(CorsLayer::permissive())
         .with_state(app_state);

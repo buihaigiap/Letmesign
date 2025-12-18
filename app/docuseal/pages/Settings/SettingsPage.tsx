@@ -8,6 +8,7 @@ import ReminderSettingsPage from './ReminderSettings/ReminderSettingsPage';
 import GeneralSettings from './GeneralSettings';
 import PersonalizationPage from './Personalization';
 import PDFSignaturePage from './PDFSignature/PDFSignaturePage';
+import ApiKey from './ApiKey/IndexApiKey';
 
 const SettingsPage = () => {
   const { t } = useTranslation();
@@ -21,6 +22,7 @@ const SettingsPage = () => {
     { text: 'Personalization', path: '/settings/personalization' },
     { text: 'E-Sign Settings', path: '/settings/pdf-signature' },
     { text: t('navigation.general'), path: '/settings/general' },
+    { text: 'API', path: '/settings/api' }
   ];
 
   return (
@@ -51,6 +53,7 @@ const SettingsPage = () => {
             <Route path="personalization" element={<PersonalizationPage />} />
             <Route path="pdf-signature" element={<PDFSignaturePage />} />
             <Route path="general" element={<GeneralSettings />} />
+            <Route path="api" element={<ApiKey />} />
             <Route index element={<Navigate to="profile" replace />} />
           </Routes>
         </Paper>

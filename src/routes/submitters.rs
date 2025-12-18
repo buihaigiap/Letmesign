@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State, Extension, ConnectInfo},
-    http::{StatusCode, header},
+    http::{StatusCode, header, HeaderMap},
     response::{Json, Response, IntoResponse},
     routing::{get, put, delete},
     Router,
@@ -10,7 +10,7 @@ use axum::{
 use std::net::SocketAddr;
 use crate::common::responses::ApiResponse;
 use crate::database::queries::{SubmitterQueries, UserQueries, SubmissionFieldQueries, GlobalSettingsQueries, TemplateQueries, EmailTemplateQueries, TemplateFieldQueries};
-use crate::common::jwt::{auth_middleware, verify_jwt};
+use crate::common::jwt::{auth_middleware, combined_auth_middleware};
 use crate::common::authorization::require_admin_or_team_member;
 use crate::services::storage::StorageService;
 use chrono::Utc;
@@ -22,6 +22,7 @@ use sqlx::PgPool;
 use crate::routes::web::AppState;
 
 use crate::common::utils::replace_template_variables;
+
 
 #[utoipa::path(
     get,
@@ -191,6 +192,7 @@ pub async fn get_me(
                     "created_at": user.created_at,
                     "two_factor_enabled": user.two_factor_enabled,
                     "oauth_tokens": oauth_tokens,
+                    "api_key": user.api_key,
                 }
             });
             
@@ -413,9 +415,9 @@ pub async fn update_public_submitter(
 pub async fn get_public_submitter(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    headers: HeaderMap,
 ) -> (StatusCode, Json<ApiResponse<crate::models::submitter::Submitter>>) {
     let pool = &state.lock().await.db_pool;
-
     match SubmitterQueries::get_submitter_by_token(pool, &token).await {
         Ok(Some(db_submitter)) => {
             let reminder_config = db_submitter.reminder_config.as_ref()
@@ -4188,6 +4190,6 @@ pub fn create_submitter_router() -> Router<AppState> {
         .route("/submitters/:id", get(get_submitter))
         .route("/submitters/:id", put(update_submitter))
         .route("/submitters/:id", delete(delete_submitter))
-        .layer(middleware::from_fn(auth_middleware))
+        .layer(middleware::from_fn(combined_auth_middleware))
         .layer(middleware::from_fn(require_admin_or_team_member))
 }

@@ -343,5 +343,4 @@ pub async fn create_submission(
 pub fn create_submission_router() -> Router<AppState> {
     Router::new()
         .route("/submissions", post(create_submission))
-        .layer(middleware::from_fn(auth_middleware))
 }

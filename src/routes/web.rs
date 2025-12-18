@@ -49,7 +49,7 @@ use crate::routes::global_settings;
 use crate::routes::email_templates;
 use crate::routes::team;
 use crate::routes::pdf_signature;
-use crate::common::jwt::{generate_jwt, auth_middleware};
+use crate::common::jwt::{generate_jwt, auth_middleware, combined_auth_middleware};
 
 pub fn create_router() -> Router<AppState> {
     println!("Creating router...");
@@ -84,7 +84,7 @@ pub fn create_router() -> Router<AppState> {
         .merge(email_templates::create_router())
         .merge(team::create_router())
         .merge(pdf_signature::create_router())
-        .layer(middleware::from_fn(auth_middleware));
+        .layer(middleware::from_fn(combined_auth_middleware));
 
     let public_routes = Router::new()
         .route("/auth/register", post(register_handler))

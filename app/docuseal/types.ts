@@ -12,6 +12,7 @@ export interface User {
   initials?: string;
   two_factor_enabled: boolean;
   two_factor_secret?: string;
+  api_key?: string;
   created_at: string;
   oauth_tokens?: any[];
 }
