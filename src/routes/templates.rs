@@ -868,7 +868,6 @@ pub async fn get_folder_templates(
 
     let page = params.page.unwrap_or(1).max(1);
     let limit = params.limit.unwrap_or(12).max(1).min(100); // Max 100 per page
-    let offset = (page - 1) * limit;
 
     // Verify folder exists and user has permission
     match TemplateFolderQueries::get_folder_by_id(pool, id).await {
@@ -887,51 +886,55 @@ pub async fn get_folder_templates(
                 _ => return ApiResponse::forbidden("User not found".to_string()),
             }
 
-            // Get templates in this folder with pagination
-            match TemplateFolderQueries::get_team_templates_in_folder_with_pagination(pool, user_id, id, offset, limit).await {
-                Ok(db_templates) => {
-                    let mut templates = Vec::new();
-                    for db_template in db_templates {
-                        let mut template = convert_db_template_to_template_without_fields(db_template.clone());
-                        
-                        // Get username for the template owner
-                        match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
-                            Ok(Some(owner)) => {
-                                // Use name if available, fallback to email
-                                let display_name = if !owner.name.is_empty() {
-                                    owner.name
-                                } else {
-                                    owner.email
-                                };
-                                template.user_name = Some(display_name);
-                            }
-                            Ok(None) => {
-                                eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
-                            }
-                            Err(e) => {
-                                eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
-                            }
-                        }
-                        
-                        templates.push(template);
-                    }
+            // Get total count first
+            match TemplateFolderQueries::get_team_templates_in_folder_count(pool, user_id, id).await {
+                Ok(total) => {
+                    let total_pages = ((total as f64) / (limit as f64)).ceil() as i64;
+                    let adjusted_page = if total_pages > 0 && page > total_pages { total_pages } else { page };
+                    let offset = (adjusted_page - 1) * limit;
 
-                    // Get total count
-                    match TemplateFolderQueries::get_team_templates_in_folder_count(pool, user_id, id).await {
-                        Ok(total) => {
+                    // Get templates in this folder with pagination
+                    match TemplateFolderQueries::get_team_templates_in_folder_with_pagination(pool, user_id, id, offset, limit).await {
+                        Ok(db_templates) => {
+                            let mut templates = Vec::new();
+                            for db_template in db_templates {
+                                let mut template = convert_db_template_to_template_without_fields(db_template.clone());
+                                
+                                // Get username for the template owner
+                                match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
+                                    Ok(Some(owner)) => {
+                                        // Use name if available, fallback to email
+                                        let display_name = if !owner.name.is_empty() {
+                                            owner.name
+                                        } else {
+                                            owner.email
+                                        };
+                                        template.user_name = Some(display_name);
+                                    }
+                                    Ok(None) => {
+                                        eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
+                                    }
+                                }
+                                
+                                templates.push(template);
+                            }
+
                             let response = serde_json::json!({
                                 "templates": templates,
                                 "total": total,
-                                "page": page,
+                                "page": adjusted_page,
                                 "limit": limit,
-                                "total_pages": ((total as f64) / (limit as f64)).ceil() as i64
+                                "total_pages": total_pages
                             });
                             ApiResponse::success(response, "Templates retrieved successfully".to_string())
                         }
-                        Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
+                        Err(e) => ApiResponse::internal_error(format!("Failed to get templates: {}", e)),
                     }
                 }
-                Err(e) => ApiResponse::internal_error(format!("Failed to get templates: {}", e)),
+                Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
             }
         }
         Ok(None) => ApiResponse::not_found("Folder not found".to_string()),
@@ -1034,55 +1037,59 @@ pub async fn get_templates(
 
     let page = params.page.unwrap_or(1).max(1);
     let limit = params.limit.unwrap_or(12).max(1).min(100); // Max 100 per page
-    let offset = (page - 1) * limit;
     let search = params.search.as_deref().unwrap_or("").trim();
 
-    match TemplateQueries::get_team_templates_with_search(pool, user_id, offset, limit, search).await {
-        Ok(db_templates) => {
-            let mut templates = Vec::new();
-            for db_template in db_templates {
-                // Get user name for this template's owner
-                let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
-                    Ok(Some(user)) => {
-                        // Use name if available, fallback to email
-                        let display_name = if !user.name.is_empty() {
-                            user.name.clone()
-                        } else {
-                            user.email.clone()
-                        };
-                        Some(display_name)
-                    }
-                    Ok(None) => {
-                        eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
-                        None
-                    }
-                    Err(e) => {
-                        eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
-                        None
-                    }
-                };
-                
-                let mut template = convert_db_template_to_template_without_fields(db_template);
-                template.user_name = user_name;
-                templates.push(template);
-            }
+    // First get total count to calculate total_pages and adjust page
+    match TemplateQueries::get_team_templates_count_with_search(pool, user_id, search).await {
+        Ok(total) => {
+            let total_pages = ((total as f64) / (limit as f64)).ceil() as i64;
+            let adjusted_page = if total_pages > 0 && page > total_pages { total_pages } else { page };
+            let offset = (adjusted_page - 1) * limit;
 
-            // Get total count
-            match TemplateQueries::get_team_templates_count_with_search(pool, user_id, search).await {
-                Ok(total) => {
+            // Now fetch templates with adjusted offset
+            match TemplateQueries::get_team_templates_with_search(pool, user_id, offset, limit, search).await {
+                Ok(db_templates) => {
+                    let mut templates = Vec::new();
+                    for db_template in db_templates {
+                        // Get user name for this template's owner
+                        let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
+                            Ok(Some(user)) => {
+                                // Use name if available, fallback to email
+                                let display_name = if !user.name.is_empty() {
+                                    user.name.clone()
+                                } else {
+                                    user.email.clone()
+                                };
+                                Some(display_name)
+                            }
+                            Ok(None) => {
+                                eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
+                                None
+                            }
+                            Err(e) => {
+                                eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
+                                None
+                            }
+                        };
+                        
+                        let mut template = convert_db_template_to_template_without_fields(db_template);
+                        template.user_name = user_name;
+                        templates.push(template);
+                    }
+
                     let response = serde_json::json!({
                         "templates": templates,
                         "total": total,
-                        "page": page,
+                        "page": adjusted_page,
                         "limit": limit,
-                        "total_pages": ((total as f64) / (limit as f64)).ceil() as i64
+                        "total_pages": total_pages
                     });
                     ApiResponse::success(response, "Templates retrieved successfully".to_string())
                 }
-                Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
+                Err(e) => ApiResponse::internal_error(format!("Failed to retrieve templates: {}", e)),
             }
         }
-        Err(e) => ApiResponse::internal_error(format!("Failed to retrieve templates: {}", e)),
+        Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
     }
 }
 
@@ -1105,55 +1112,59 @@ pub async fn get_templates_api_key(
 
     let page = params.page.unwrap_or(1).max(1);
     let limit = params.limit.unwrap_or(12).max(1).min(100); // Max 100 per page
-    let offset = (page - 1) * limit;
     let search = params.search.as_deref().unwrap_or("").trim();
 
-    match TemplateQueries::get_team_templates_with_search(pool, user_id, offset, limit, search).await {
-        Ok(db_templates) => {
-            let mut templates = Vec::new();
-            for db_template in db_templates {
-                // Get user name for this template's owner
-                let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
-                    Ok(Some(user)) => {
-                        // Use name if available, fallback to email
-                        let display_name = if !user.name.is_empty() {
-                            user.name.clone()
-                        } else {
-                            user.email.clone()
-                        };
-                        Some(display_name)
-                    }
-                    Ok(None) => {
-                        eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
-                        None
-                    }
-                    Err(e) => {
-                        eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
-                        None
-                    }
-                };
-                
-                let mut template = convert_db_template_to_template_without_fields(db_template);
-                template.user_name = user_name;
-                templates.push(template);
-            }
+    // First get total count to calculate total_pages and adjust page
+    match TemplateQueries::get_team_templates_count_with_search(pool, user_id, search).await {
+        Ok(total) => {
+            let total_pages = ((total as f64) / (limit as f64)).ceil() as i64;
+            let adjusted_page = if total_pages > 0 && page > total_pages { total_pages } else { page };
+            let offset = (adjusted_page - 1) * limit;
 
-            // Get total count
-            match TemplateQueries::get_team_templates_count_with_search(pool, user_id, search).await {
-                Ok(total) => {
+            // Now fetch templates with adjusted offset
+            match TemplateQueries::get_team_templates_with_search(pool, user_id, offset, limit, search).await {
+                Ok(db_templates) => {
+                    let mut templates = Vec::new();
+                    for db_template in db_templates {
+                        // Get user name for this template's owner
+                        let user_name = match crate::database::queries::UserQueries::get_user_by_id(pool, db_template.user_id).await {
+                            Ok(Some(user)) => {
+                                // Use name if available, fallback to email
+                                let display_name = if !user.name.is_empty() {
+                                    user.name.clone()
+                                } else {
+                                    user.email.clone()
+                                };
+                                Some(display_name)
+                            }
+                            Ok(None) => {
+                                eprintln!("⚠️ User {} not found for template {}", db_template.user_id, db_template.id);
+                                None
+                            }
+                            Err(e) => {
+                                eprintln!("❌ Error getting user {} for template {}: {}", db_template.user_id, db_template.id, e);
+                                None
+                            }
+                        };
+                        
+                        let mut template = convert_db_template_to_template_without_fields(db_template);
+                        template.user_name = user_name;
+                        templates.push(template);
+                    }
+
                     let response = serde_json::json!({
                         "templates": templates,
                         "total": total,
-                        "page": page,
+                        "page": adjusted_page,
                         "limit": limit,
-                        "total_pages": ((total as f64) / (limit as f64)).ceil() as i64
+                        "total_pages": total_pages
                     });
                     ApiResponse::success(response, "Templates retrieved successfully".to_string())
                 }
-                Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
+                Err(e) => ApiResponse::internal_error(format!("Failed to retrieve templates: {}", e)),
             }
         }
-        Err(e) => ApiResponse::internal_error(format!("Failed to retrieve templates: {}", e)),
+        Err(e) => ApiResponse::internal_error(format!("Failed to get total count: {}", e)),
     }
 }
 

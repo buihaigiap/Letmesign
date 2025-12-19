@@ -52,6 +52,7 @@ const FormModal = ({
   fileUploading,progress,uploadFile,deleteFile,selectedReason,setSelectedReason,customReason,
   setCustomReason,submitterInfo,user,clearedFields,setPendingUploads
 }: any) => {
+  const [uploadKeys, setUploadKeys] = useState<{[key: number]: number}>({});
   const currentField = fields[currentFieldIndex];
   const isLastField = currentFieldIndex === fields.length - 1;
   const validateField = (field: TemplateField, value: string): string | null => {
@@ -203,9 +204,11 @@ const FormModal = ({
       const success = await deleteFile(fileUrl);
       if (success) {
         onTextChange(fieldId, '');
+        setUploadKeys(prev => ({ ...prev, [fieldId]: (prev[fieldId] || 0) + 1 }));
       }
     } else {
       onTextChange(fieldId, '');
+      setUploadKeys(prev => ({ ...prev, [fieldId]: (prev[fieldId] || 0) + 1 }));
     }
   };
 
@@ -345,6 +348,7 @@ const FormModal = ({
                 id={`image-upload-${currentField.id}`}
                 disabled={fileUploading}
                 required={currentField.required}
+                key={`image-${currentField.id}-${uploadKeys[currentField.id] || 0}`}
               />
               {!texts[currentField.id] && !fileUploading && (
                 <>
@@ -433,6 +437,7 @@ const FormModal = ({
                 id={`file-upload-${currentField.id}`}
                 disabled={fileUploading}
                 required={currentField.required}
+                key={`file-${currentField.id}-${uploadKeys[currentField.id] || 0}`}
               />
               {!texts[currentField.id] && !fileUploading && (
                 <>

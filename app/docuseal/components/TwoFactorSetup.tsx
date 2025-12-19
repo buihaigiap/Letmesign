@@ -13,7 +13,7 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [setupData, setSetupData] = useState<TwoFactorSetupType | null>(null);
   const [verificationCode, setVerificationCode] = useState('');
-
+  
   useEffect(() => {
     fetchSetupData();
   }, []);
