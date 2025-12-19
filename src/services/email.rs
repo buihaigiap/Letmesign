@@ -222,12 +222,12 @@ impl EmailService {
                 lettre::message::MultiPart::alternative()
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                            .header(lettre::message::header::ContentType::parse("text/plain; charset=utf-8").unwrap())
                             .body(text_body),
                     )
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_HTML)
+                            .header(lettre::message::header::ContentType::parse("text/html; charset=utf-8").unwrap())
                             .body(html_body),
                     ),
             )?;
@@ -356,12 +356,12 @@ impl EmailService {
                 lettre::message::MultiPart::alternative()
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                            .header(lettre::message::header::ContentType::parse("text/plain; charset=utf-8").unwrap())
                             .body(text_body),
                     )
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_HTML)
+                            .header(lettre::message::header::ContentType::parse("text/html; charset=utf-8").unwrap())
                             .body(html_body),
                     ),
             )?;
@@ -515,12 +515,12 @@ impl EmailService {
                 lettre::message::MultiPart::alternative()
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                            .header(lettre::message::header::ContentType::parse("text/plain; charset=utf-8").unwrap())
                             .body(text_body),
                     )
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_HTML)
+                            .header(lettre::message::header::ContentType::parse("text/html; charset=utf-8").unwrap())
                             .body(html_body),
                     ),
             )?;
@@ -663,12 +663,12 @@ impl EmailService {
                 lettre::message::MultiPart::alternative()
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                            .header(lettre::message::header::ContentType::parse("text/plain; charset=utf-8").unwrap())
                             .body(text_body),
                     )
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_HTML)
+                            .header(lettre::message::header::ContentType::parse("text/html; charset=utf-8").unwrap())
                             .body(html_body),
                     ),
             )?;
@@ -734,12 +734,12 @@ impl EmailService {
                 lettre::message::MultiPart::alternative()
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                            .header(lettre::message::header::ContentType::parse("text/plain; charset=utf-8").unwrap())
                             .body(text_body),
                     )
                     .singlepart(
                         lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_HTML)
+                            .header(lettre::message::header::ContentType::parse("text/html; charset=utf-8").unwrap())
                             .body(html_body),
                     ),
             )?;
@@ -854,7 +854,7 @@ impl EmailService {
             .from(self.from_email.parse()?)
             .to(to_email.parse()?)
             .subject(subject)
-            .header(lettre::message::header::ContentType::TEXT_HTML)
+            .header(lettre::message::header::ContentType::parse("text/html; charset=utf-8").unwrap())
             .body(html_body)?;
 
         let mailer = if self.smtp_host == "localhost" {
@@ -927,11 +927,11 @@ impl EmailService {
         // Add the body
         let body_part = if body_format == "html" {
             SinglePart::builder()
-                .header(lettre::message::header::ContentType::TEXT_HTML)
+                .header(lettre::message::header::ContentType::parse("text/html; charset=utf-8").unwrap())
                 .body(body.to_string())
         } else {
             SinglePart::builder()
-                .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                .header(lettre::message::header::ContentType::parse("text/plain; charset=utf-8").unwrap())
                 .body(body.to_string())
         };
 

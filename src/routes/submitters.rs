@@ -1679,6 +1679,7 @@ async fn render_signatures_on_pdf(
                     } else {
                         signature_value.to_string()
                     };
+                    println!("DEBUG: Plain text signature - field_name={}, signature_value='{}', display_value='{}'", field_name, signature_value, display_value);
                     render_text_field(&mut doc, page_id, &display_value, x_pos, sig_y, field_width, sig_height)?;
                 }
                 
@@ -1730,6 +1731,20 @@ fn hash_id(value: i64) -> String {
         &hex32[16..20],
         &hex32[20..32]
     )
+}
+
+// Helper function to encode string as UTF-16BE hex for PDF text
+fn utf16be_hex(text: &str) -> lopdf::Object {
+    use lopdf::StringFormat;
+    
+    // Encode to UTF-16BE
+    let mut utf16_bytes = vec![0xFE, 0xFF]; // BOM
+    for code_unit in text.encode_utf16() {
+        utf16_bytes.push((code_unit >> 8) as u8);
+        utf16_bytes.push((code_unit & 0xFF) as u8);
+    }
+    
+    lopdf::Object::String(utf16_bytes, StringFormat::Hexadecimal)
 }
 
 // Calculate text height for signature info (matching SignatureRenderer.tsx logic)
@@ -2011,6 +2026,7 @@ fn render_signature_id_info(
     Ok(())
 }
 
+
 // Render text field (default)
 fn render_text_field(
     doc: &mut lopdf::Document,
@@ -2021,14 +2037,17 @@ fn render_text_field(
     field_width: f64,
     field_height: f64,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    use lopdf::{Object, Stream, Dictionary};
+    use lopdf::{Object, Stream, Dictionary, StringFormat};
     use lopdf::content::{Content, Operation};
 
     // Use CSS-like font size to match frontend (16px -> 12pt)
     let font_size = 12.0; // Fixed size to match frontend
 
-    // Truncate text if too long (matching frontend behavior)
-    let display_text = if text.len() > 10 { format!("{}...", &text[..10]) } else { text.to_string() };
+    // Display full text without truncation
+    let display_text = text.to_string();
+
+    // Debug: Print the original text and display text
+    println!("DEBUG render_text_field: original text = '{}', display_text = '{}'", text, display_text);
 
     // Create Arial font if not exists
     let font_name = b"F1".to_vec();
@@ -2036,7 +2055,7 @@ fn render_text_field(
         let mut arial_dict = Dictionary::new();
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
-        arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
+        arial_dict.set("BaseFont", Object::Name(b"Helvetica".to_vec()));
         arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
@@ -2073,13 +2092,11 @@ fn render_text_field(
         }
     }
 
-    // Center text vertically and horizontally (matching frontend behavior)
-    // Frontend: ctx.fillText(data || '', width / 2, (height - textHeight) / 2 + 5);
-    // Since textHeight = 0 for text fields, it's height / 2 + 5
+    // Position text to the left
     let text_y = pdf_y + field_height / 2.0 + 5.0;
 
-    // Center horizontally
-    let text_x = x_pos + field_width / 2.0;
+    // Left align horizontally
+    let text_x = x_pos + 5.0; // Small padding from left
 
     // Create text content stream
     let operations = vec![
@@ -2107,7 +2124,7 @@ fn render_text_field(
 
         // Show text
         Operation::new("Tj", vec![
-            Object::string_literal(display_text),
+            utf16be_hex(&display_text),
         ]),
 
         // End text object
@@ -2295,7 +2312,7 @@ fn render_cells_field(
         let mut arial_dict = Dictionary::new();
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
-        arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
+        arial_dict.set("BaseFont", Object::Name(b"Helvetica".to_vec()));
         arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
@@ -2457,7 +2474,7 @@ fn render_initials_field(
         let mut arial_dict = Dictionary::new();
         arial_dict.set("Type", Object::Name(b"Font".to_vec()));
         arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
-        arial_dict.set("BaseFont", Object::Name(b"Arial".to_vec()));
+        arial_dict.set("BaseFont", Object::Name(b"Helvetica".to_vec()));
         arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
         doc.add_object(Object::Dictionary(arial_dict))
     };
@@ -3371,6 +3388,7 @@ async fn generate_signed_pdf_for_template_with_filter(
                         sig.get("field_name").and_then(|v| v.as_str()),
                         sig.get("signature_value").and_then(|v| v.as_str()),
                     ) {
+                        println!("DEBUG: Retrieved signature_value from DB: '{}'", signature_value);
                         // Find the corresponding template field for position information
                         if let Some(template_field) = template_fields.iter().find(|f| f.name == field_name) {
                             // Parse position from JSON

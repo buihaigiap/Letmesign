@@ -77,6 +77,33 @@ const sanitizeTextForPDF = (text: string): string => {
     .replace(/Ẫ/g, 'A')
     .replace(/Ỗ/g, 'O')
     .replace(/Ừ/g, 'U')
+    // Additional basic accented characters
+    .replace(/à/g, 'a')
+    .replace(/á/g, 'a')
+    .replace(/ã/g, 'a')
+    .replace(/è/g, 'e')
+    .replace(/é/g, 'e')
+    .replace(/ì/g, 'i')
+    .replace(/í/g, 'i')
+    .replace(/ò/g, 'o')
+    .replace(/ó/g, 'o')
+    .replace(/õ/g, 'o')
+    .replace(/ù/g, 'u')
+    .replace(/ú/g, 'u')
+    .replace(/ü/g, 'u')
+    .replace(/À/g, 'A')
+    .replace(/Á/g, 'A')
+    .replace(/Ã/g, 'A')
+    .replace(/È/g, 'E')
+    .replace(/É/g, 'E')
+    .replace(/Ì/g, 'I')
+    .replace(/Í/g, 'I')
+    .replace(/Ò/g, 'O')
+    .replace(/Ó/g, 'O')
+    .replace(/Õ/g, 'O')
+    .replace(/Ù/g, 'U')
+    .replace(/Ú/g, 'U')
+    .replace(/Ü/g, 'U')
     // Other common Unicode characters that might cause issues
     .replace(/[^\x00-\x7F]/g, '?'); // Replace any remaining non-ASCII characters with ?
 };
@@ -276,34 +303,34 @@ export const renderSignatureToImage = (signatureData: string, width: number, hei
       let textToShow: string[] = [];
       if (globalSettings?.add_signature_id_to_the_documents) {
         if (submitterId) textToShow.push(`ID: ${hashId(submitterId + 1)}`);
-        if (submitterEmail) textToShow.push(sanitizeTextForPDF(submitterEmail));
-        textToShow.push(sanitizeTextForPDF(new Date().toLocaleString('vi-VN', {
+        if (submitterEmail) textToShow.push(submitterEmail);
+        textToShow.push(new Date().toLocaleString('vi-VN', {
           year: 'numeric', month: '2-digit', day: '2-digit',
           hour: '2-digit', minute: '2-digit', second: '2-digit',
           timeZone: 'Asia/Ho_Chi_Minh'
-        })));
+        }));
       } else if (additionalText) {
-        textToShow = [sanitizeTextForPDF(additionalText)];
+        textToShow = [additionalText];
       }
 
       // Always show reason if require_signing_reason is enabled and reason exists
       if (globalSettings?.require_signing_reason && reason) {
         if (globalSettings?.add_signature_id_to_the_documents) {
           // Show both reason and ID/email/date
-          textToShow = [`Reason: ${sanitizeTextForPDF(reason)}`, `ID: ${hashId(submitterId + 1)}`, sanitizeTextForPDF(submitterEmail), sanitizeTextForPDF(new Date().toLocaleString('vi-VN', {
+          textToShow = [`Reason: ${reason}`, `ID: ${hashId(submitterId + 1)}`, submitterEmail, new Date().toLocaleString('vi-VN', {
             year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', second: '2-digit',
             timeZone: 'Asia/Ho_Chi_Minh'
-          }))].filter(Boolean);
+          })].filter(Boolean);
         } else {
           // Show only reason
-          textToShow = [`Reason: ${sanitizeTextForPDF(reason)}`];
+          textToShow = [`Reason: ${reason}`];
         }
       }
 
       if (textToShow.length > 0) {
         ctx.fillStyle = '#000000';
-        ctx.font = '8px sans-serif';
+        ctx.font = `bold normal 8px 'Helvetica, Arial, sans-serif'`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'bottom';
 
@@ -365,7 +392,21 @@ export const downloadSignedPDF = async (
   // Load PDF với pdf-lib
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const pages = pdfDoc.getPages();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // Embed font that supports Vietnamese
+  let font;
+  try {
+    const fontResponse = await fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu72xK.ttf');
+    if (fontResponse.ok) {
+      const fontBytes = await fontResponse.arrayBuffer();
+      font = await pdfDoc.embedFont(fontBytes);
+    } else {
+      throw new Error('Font fetch failed');
+    }
+  } catch (error) {
+    console.warn('Failed to embed custom font, falling back to Helvetica:', error);
+    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
 
   // Lặp qua tất cả chữ ký và render lên PDF
   for (const signature of signatures) {
@@ -417,15 +458,39 @@ export const downloadSignedPDF = async (
 
     // Render based on field type
     if (field.field_type === 'text' || field.field_type === 'date' || field.field_type === 'number') {
-      // Render text
+      // Render text as image to preserve Unicode characters
       const fontSize = Math.min(fieldHeight * 0.6, 12);
-      page.drawText(sanitizeTextForPDF(signatureValue), {
-        x: pdfX,
-        y: pdfY + fieldHeight * 0.3, // Center vertically
-        size: fontSize,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Use higher resolution for sharp text
+        const scale = 4;
+        canvas.width = fieldWidth * scale;
+        canvas.height = fieldHeight * scale;
+        ctx.scale(scale, scale);
+        ctx.font = `bold normal ${fontSize}px 'Helvetica, Arial, sans-serif'`;
+        ctx.fillStyle = 'black';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(signatureValue, 0, fieldHeight / 2);
+        const imageDataUrl = canvas.toDataURL('image/png');
+        const imageBytes = await fetch(imageDataUrl).then(r => r.arrayBuffer());
+        const image = await pdfDoc.embedPng(imageBytes);
+        page.drawImage(image, {
+          x: pdfX,
+          y: pdfY,
+          width: fieldWidth,
+          height: fieldHeight,
+        });
+      } else {
+        // Fallback to text if canvas not available
+        page.drawText(signatureValue, {
+          x: pdfX,
+          y: pdfY + fieldHeight * 0.3,
+          size: fontSize,
+          font: font,
+          color: rgb(0, 0, 0),
+        });
+      }
     } else if (field.field_type === 'signature' || field.field_type === 'initials') {
       // Xử lý chữ ký (có thể là image hoặc drawn signature)
       if (signatureValue.startsWith('data:image/') || signatureValue.startsWith('/api/')) {
@@ -510,15 +575,38 @@ export const downloadSignedPDF = async (
           });
         }
       } else {
-        // Plain text signature
+        // Plain text signature - render as image
         const fontSize = Math.min(fieldHeight * 0.6, 12);
-        page.drawText(sanitizeTextForPDF(signatureValue), {
-          x: pdfX,
-          y: pdfY + fieldHeight * 0.3,
-          size: fontSize,
-          font: font,
-          color: rgb(0, 0, 0),
-        });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Use higher resolution for sharp text
+          const scale = 4;
+          canvas.width = fieldWidth * scale;
+          canvas.height = fieldHeight * scale;
+          ctx.scale(scale, scale);
+          ctx.font = `bold normal ${fontSize}px 'Helvetica, Arial, sans-serif'`;
+          ctx.fillStyle = 'black';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(signatureValue, 0, fieldHeight / 2);
+          const imageDataUrl = canvas.toDataURL('image/png');
+          const imageBytes = await fetch(imageDataUrl).then(r => r.arrayBuffer());
+          const image = await pdfDoc.embedPng(imageBytes);
+          page.drawImage(image, {
+            x: pdfX,
+            y: pdfY,
+            width: fieldWidth,
+            height: fieldHeight,
+          });
+        } else {
+          page.drawText(signatureValue, {
+            x: pdfX,
+            y: pdfY + fieldHeight * 0.3,
+            size: fontSize,
+            font: font,
+            color: rgb(0, 0, 0),
+          });
+        }
       }
     } else if (field.field_type === 'checkbox') {
       // Render checkbox
@@ -642,8 +730,24 @@ export const generateAuditLogPages = async (
   auditLog: AuditLogEntry[],
   globalSettings?: any
 ): Promise<void> => {
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // Embed fonts that support Vietnamese
+  let font, boldFont;
+  try {
+    const fontResponse = await fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu72xK.ttf');
+    const boldFontResponse = await fetch('https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlFBBc4.ttf');
+    if (fontResponse.ok && boldFontResponse.ok) {
+      const fontBytes = await fontResponse.arrayBuffer();
+      const boldFontBytes = await boldFontResponse.arrayBuffer();
+      font = await pdfDoc.embedFont(fontBytes);
+      boldFont = await pdfDoc.embedFont(boldFontBytes);
+    } else {
+      throw new Error('Font fetch failed');
+    }
+  } catch (error) {
+    console.warn('Failed to embed custom fonts, falling back to Helvetica:', error);
+    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  }
   
   const pageWidth = 595; // A4 width in points
   const pageHeight = 842; // A4 height in points
@@ -683,15 +787,41 @@ export const generateAuditLogPages = async (
     // Draw company name if available
     let titleY = yPosition - logoHeight / 2 - 9;
     if (globalSettings?.company_name) {
-      const companyText = sanitizeTextForPDF(globalSettings.company_name);
-      const companyWidth = boldFont.widthOfTextAtSize(companyText, 16);
-      page.drawText(companyText, {
-        x: margin + logoWidth + 20, // Position next to logo
-        y: titleY,
-        size: 16,
-        font: boldFont,
-        color: rgb(0, 0, 0),
-      });
+      const companyText = globalSettings.company_name;
+      // Render company name as image
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Use higher resolution for sharp text
+        const scale = 4;
+        ctx.font = `${16 * scale}px sans-serif`;
+        const textWidth = ctx.measureText(companyText).width / scale;
+        canvas.width = textWidth * scale;
+        canvas.height = 20 * scale;
+        ctx.scale(scale, scale);
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = 'black';
+        ctx.textBaseline = 'top';
+        ctx.fillText(companyText, 0, 0);
+        const imageDataUrl = canvas.toDataURL('image/png');
+        const imageBytes = await fetch(imageDataUrl).then(r => r.arrayBuffer());
+        const image = await pdfDoc.embedPng(imageBytes);
+        page.drawImage(image, {
+          x: margin + logoWidth + 20,
+          y: titleY - 16,
+          width: textWidth,
+          height: 20,
+        });
+      } else {
+        const companyWidth = boldFont.widthOfTextAtSize(companyText, 16);
+        page.drawText(companyText, {
+          x: margin + logoWidth + 20,
+          y: titleY,
+          size: 16,
+          font: boldFont,
+          color: rgb(0, 0, 0),
+        });
+      }
       titleY -= 25; // Move audit log title down
     }
     
@@ -712,14 +842,40 @@ export const generateAuditLogPages = async (
     // No logo, draw company name and title
     let currentY = yPosition;
     if (globalSettings?.company_name) {
-      const companyText = sanitizeTextForPDF(globalSettings.company_name);
-      page.drawText(companyText, {
-        x: margin,
-        y: currentY,
-        size: 16,
-        font: boldFont,
-        color: rgb(0, 0, 0),
-      }); 
+      const companyText = globalSettings.company_name;
+      // Render company name as image
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Use higher resolution for sharp text
+        const scale = 4;
+        ctx.font = `${16 * scale}px sans-serif`;
+        const textWidth = ctx.measureText(companyText).width / scale;
+        canvas.width = textWidth * scale;
+        canvas.height = 20 * scale;
+        ctx.scale(scale, scale);
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = 'black';
+        ctx.textBaseline = 'top';
+        ctx.fillText(companyText, 0, 0);
+        const imageDataUrl = canvas.toDataURL('image/png');
+        const imageBytes = await fetch(imageDataUrl).then(r => r.arrayBuffer());
+        const image = await pdfDoc.embedPng(imageBytes);
+        page.drawImage(image, {
+          x: margin,
+          y: currentY - 16,
+          width: textWidth,
+          height: 20,
+        });
+      } else {
+        page.drawText(companyText, {
+          x: margin,
+          y: currentY,
+          size: 16,
+          font: boldFont,
+          color: rgb(0, 0, 0),
+        });
+      }
       currentY -= 25;
     }
     
@@ -908,7 +1064,21 @@ export const downloadSignedPDFWithAuditLog = async (
   // Load PDF với pdf-lib
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const pages = pdfDoc.getPages();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // Embed font that supports Vietnamese
+  let font;
+  try {
+    const fontResponse = await fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu72xK.ttf');
+    if (fontResponse.ok) {
+      const fontBytes = await fontResponse.arrayBuffer();
+      font = await pdfDoc.embedFont(fontBytes);
+    } else {
+      throw new Error('Font fetch failed');
+    }
+  } catch (error) {
+    console.warn('Failed to embed custom font, falling back to Helvetica:', error);
+    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
 
   // Lặp qua tất cả chữ ký và render lên PDF (same logic as downloadSignedPDF)
   for (const signature of signatures) {
@@ -951,13 +1121,36 @@ export const downloadSignedPDFWithAuditLog = async (
     // Render based on field type (same as downloadSignedPDF)
     if (field.field_type === 'text' || field.field_type === 'date' || field.field_type === 'number') {
       const fontSize = Math.min(fieldHeight * 0.6, 12);
-      page.drawText(sanitizeTextForPDF(signatureValue), {
-        x: pdfX,
-        y: pdfY + fieldHeight * 0.3,
-        size: fontSize,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Use higher resolution for sharp text
+        const scale = 4;
+        canvas.width = fieldWidth * scale;
+        canvas.height = fieldHeight * scale;
+        ctx.scale(scale, scale);
+        ctx.font = `bold normal ${fontSize}px 'Helvetica, Arial, sans-serif'`;
+        ctx.fillStyle = 'black';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(signatureValue, 0, fieldHeight / 2);
+        const imageDataUrl = canvas.toDataURL('image/png');
+        const imageBytes = await fetch(imageDataUrl).then(r => r.arrayBuffer());
+        const image = await pdfDoc.embedPng(imageBytes);
+        page.drawImage(image, {
+          x: pdfX,
+          y: pdfY,
+          width: fieldWidth,
+          height: fieldHeight,
+        });
+      } else {
+        page.drawText(signatureValue, {
+          x: pdfX,
+          y: pdfY + fieldHeight * 0.3,
+          size: fontSize,
+          font: font,
+          color: rgb(0, 0, 0),
+        });
+      }
     } else if (field.field_type === 'signature' || field.field_type === 'initials') {
       if (signatureValue.startsWith('data:image/') || signatureValue.startsWith('/api/')) {
         try {
@@ -1032,13 +1225,36 @@ export const downloadSignedPDFWithAuditLog = async (
         }
       } else {
         const fontSize = Math.min(fieldHeight * 0.6, 12);
-        page.drawText(sanitizeTextForPDF(signatureValue), {
-          x: pdfX,
-          y: pdfY + fieldHeight * 0.3,
-          size: fontSize,
-          font: font,
-          color: rgb(0, 0, 0),
-        });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Use higher resolution for sharp text
+          const scale = 4;
+          canvas.width = fieldWidth * scale;
+          canvas.height = fieldHeight * scale;
+          ctx.scale(scale, scale);
+          ctx.font = `bold normal ${fontSize}px 'Helvetica, Arial, sans-serif'`;
+          ctx.fillStyle = 'black';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(signatureValue, 0, fieldHeight / 2);
+          const imageDataUrl = canvas.toDataURL('image/png');
+          const imageBytes = await fetch(imageDataUrl).then(r => r.arrayBuffer());
+          const image = await pdfDoc.embedPng(imageBytes);
+          page.drawImage(image, {
+            x: pdfX,
+            y: pdfY,
+            width: fieldWidth,
+            height: fieldHeight,
+          });
+        } else {
+          page.drawText(signatureValue, {
+            x: pdfX,
+            y: pdfY + fieldHeight * 0.3,
+            size: fontSize,
+            font: font,
+            color: rgb(0, 0, 0),
+          });
+        }
       }
     } else if (field.field_type === 'checkbox') {
       if (signatureValue === 'true') {

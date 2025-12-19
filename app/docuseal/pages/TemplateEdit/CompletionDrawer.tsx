@@ -28,7 +28,6 @@ const CompletionDrawer: React.FC<CompletionDrawerProps> = ({
 }) => {
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [isSendingEmail, setIsSendingEmail] = React.useState(false);
-  
   React.useEffect(() => {
     if (submitterInfo?.global_settings?.enable_confetti && open) {
       confetti({

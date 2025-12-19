@@ -21,6 +21,8 @@ const CompletionScreen: React.FC<CompletionScreenProps> = ({
 }) => {
   const { globalSettings } = useBasicSettings();
   const [canDownload, setCanDownload] = useState<boolean>(true);
+  const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
   useEffect(() => {
     // Fetch submitter info to get can_download status
     const fetchSubmitterInfo = async () => {
@@ -41,15 +43,19 @@ const CompletionScreen: React.FC<CompletionScreenProps> = ({
   }, [token]);
   const handleSendEmail = async () => {
     try {
+      setIsSendingEmail(true);
       await upstashService.sendCopyEmail(token);
       toast.success('Email sent successfully');
     } catch (error) {
       toast.error('Failed to send email');
+    }finally {
+      setIsSendingEmail(false);
     }
   };
 
   const handleDownload = async () => {
     try {
+      setIsDownloading(true);
       // Fetch submitter info, signatures and fields data
       const [submitterResult, signaturesResult, fieldsResult] = await Promise.all([
         upstashService.getSubmitterInfo(token),
@@ -106,6 +112,8 @@ const CompletionScreen: React.FC<CompletionScreenProps> = ({
         return;
       }
       toast.error('Failed to download');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -136,6 +144,8 @@ const CompletionScreen: React.FC<CompletionScreenProps> = ({
 
         <div className="space-y-3">
           <Button
+            loading ={isSendingEmail}
+            disabled={isSendingEmail}
             variant="contained"
             fullWidth
             sx={{
@@ -150,6 +160,8 @@ const CompletionScreen: React.FC<CompletionScreenProps> = ({
 
           {canDownload && (
             <Button
+              disabled={isDownloading}
+              loading={isDownloading}
               variant="outlined"
               fullWidth
               sx={{
