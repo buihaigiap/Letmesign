@@ -1733,20 +1733,6 @@ fn hash_id(value: i64) -> String {
     )
 }
 
-// Helper function to encode string as UTF-16BE hex for PDF text
-fn utf16be_hex(text: &str) -> lopdf::Object {
-    use lopdf::StringFormat;
-    
-    // Encode to UTF-16BE
-    let mut utf16_bytes = vec![0xFE, 0xFF]; // BOM
-    for code_unit in text.encode_utf16() {
-        utf16_bytes.push((code_unit >> 8) as u8);
-        utf16_bytes.push((code_unit & 0xFF) as u8);
-    }
-    
-    lopdf::Object::String(utf16_bytes, StringFormat::Hexadecimal)
-}
-
 // Calculate text height for signature info (matching SignatureRenderer.tsx logic)
 fn calculate_signature_text_height(
     user_settings: &crate::database::models::DbGlobalSettings,
@@ -2039,6 +2025,8 @@ fn render_text_field(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     use lopdf::{Object, Stream, Dictionary, StringFormat};
     use lopdf::content::{Content, Operation};
+    use std::fs;
+    use std::collections::BTreeMap;
 
     // Use CSS-like font size to match frontend (16px -> 12pt)
     let font_size = 12.0; // Fixed size to match frontend
@@ -2049,16 +2037,108 @@ fn render_text_field(
     // Debug: Print the original text and display text
     println!("DEBUG render_text_field: original text = '{}', display_text = '{}'", text, display_text);
 
-    // Create Arial font if not exists
+    // Load Noto Sans Bold font for Unicode support with bold weight
+    let font_data = fs::read("/home/giap/LamViec/Letmesign/NotoSans-Bold.ttf")
+        .map_err(|e| format!("Failed to load font file: {}", e))?;
+
+    // Create embedded TrueType font with CID encoding for Unicode support
     let font_name = b"F1".to_vec();
-    let font_dict_id = {
-        let mut arial_dict = Dictionary::new();
-        arial_dict.set("Type", Object::Name(b"Font".to_vec()));
-        arial_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
-        arial_dict.set("BaseFont", Object::Name(b"Helvetica".to_vec()));
-        arial_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
-        doc.add_object(Object::Dictionary(arial_dict))
-    };
+
+    // Create font file stream
+    let mut font_file_dict = Dictionary::new();
+    font_file_dict.set("Length1", Object::Integer(font_data.len() as i64));
+    let font_file_stream = Stream::new(font_file_dict, font_data);
+    let font_file_id = doc.add_object(font_file_stream);
+
+    // Create ToUnicode CMap for proper character mapping
+    let unicode_chars: Vec<u32> = display_text.chars().map(|c| c as u32).collect();
+    let mut cmap_content = String::from(
+        "/CIDInit /ProcSet findresource begin\n\
+         12 dict begin\n\
+         begincmap\n\
+         /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n\
+         /CMapName /Adobe-Identity-UCS def\n\
+         /CMapType 2 def\n\
+         1 begincodespacerange\n\
+         <0000> <FFFF>\n\
+         endcodespacerange\n"
+    );
+    
+    // Add character mappings
+    let mut unique_chars: BTreeMap<u32, ()> = BTreeMap::new();
+    for &code in &unicode_chars {
+        unique_chars.insert(code, ());
+    }
+    
+    cmap_content.push_str(&format!("{} beginbfchar\n", unique_chars.len()));
+    for &code in unique_chars.keys() {
+        cmap_content.push_str(&format!("<{:04X}> <{:04X}>\n", code, code));
+    }
+    cmap_content.push_str(
+        "endbfchar\n\
+         endcmap\n\
+         CMapName currentdict /CMap defineresource pop\n\
+         end\n\
+         end\n"
+    );
+    
+    let cmap_bytes = cmap_content.into_bytes();
+    let mut cmap_stream_dict = Dictionary::new();
+    cmap_stream_dict.set("Length", Object::Integer(cmap_bytes.len() as i64));
+    let cmap_stream = Stream::new(cmap_stream_dict, cmap_bytes);
+    let to_unicode_id = doc.add_object(cmap_stream);
+
+    // Create font descriptor
+    let mut font_descriptor = Dictionary::new();
+    font_descriptor.set("Type", Object::Name(b"FontDescriptor".to_vec()));
+    font_descriptor.set("FontName", Object::Name(b"NotoSans-Bold".to_vec()));
+    font_descriptor.set("Flags", Object::Integer(32)); // Symbolic font
+    font_descriptor.set("FontBBox", Object::Array(vec![
+        Object::Integer(-511), Object::Integer(-250), Object::Integer(1399), Object::Integer(1000)
+    ]));
+    font_descriptor.set("ItalicAngle", Object::Integer(0));
+    font_descriptor.set("Ascent", Object::Integer(1000));
+    font_descriptor.set("Descent", Object::Integer(-250));
+    font_descriptor.set("CapHeight", Object::Integer(700));
+    font_descriptor.set("StemV", Object::Integer(120)); // Increased for bold weight
+    font_descriptor.set("FontFile2", Object::Reference(font_file_id));
+    let font_descriptor_id = doc.add_object(Object::Dictionary(font_descriptor));
+
+    // Create CID font dictionary with proper width mapping
+    let mut cid_font_dict = Dictionary::new();
+    cid_font_dict.set("Type", Object::Name(b"Font".to_vec()));
+    cid_font_dict.set("Subtype", Object::Name(b"CIDFontType2".to_vec()));
+    cid_font_dict.set("BaseFont", Object::Name(b"NotoSans-Bold".to_vec()));
+    cid_font_dict.set("CIDSystemInfo", Object::Dictionary({
+        let mut cid_system_info = Dictionary::new();
+        cid_system_info.set("Registry", Object::String(b"Adobe".to_vec(), StringFormat::Literal));
+        cid_system_info.set("Ordering", Object::String(b"Identity".to_vec(), StringFormat::Literal));
+        cid_system_info.set("Supplement", Object::Integer(0));
+        cid_system_info
+    }));
+    cid_font_dict.set("FontDescriptor", Object::Reference(font_descriptor_id));
+    
+    // Set proper default width for better spacing (600 units = balanced spacing)
+    cid_font_dict.set("DW", Object::Integer(600));
+    
+    // Add width array for common characters to ensure consistent spacing
+    let w_array = vec![
+        Object::Integer(0),     // Start CID
+        Object::Array(vec![Object::Integer(600); 256]),  // 256 characters with width 600
+    ];
+    cid_font_dict.set("W", Object::Array(w_array));
+    
+    let cid_font_id = doc.add_object(Object::Dictionary(cid_font_dict));
+
+    // Create Type0 font dictionary with ToUnicode CMap
+    let mut type0_font_dict = Dictionary::new();
+    type0_font_dict.set("Type", Object::Name(b"Font".to_vec()));
+    type0_font_dict.set("Subtype", Object::Name(b"Type0".to_vec()));
+    type0_font_dict.set("BaseFont", Object::Name(b"NotoSans-Bold".to_vec()));
+    type0_font_dict.set("Encoding", Object::Name(b"Identity-H".to_vec()));
+    type0_font_dict.set("DescendantFonts", Object::Array(vec![Object::Reference(cid_font_id)]));
+    type0_font_dict.set("ToUnicode", Object::Reference(to_unicode_id));
+    let font_dict_id = doc.add_object(Object::Dictionary(type0_font_dict));
 
     // Add font to page resources
     {
@@ -2098,7 +2178,12 @@ fn render_text_field(
     // Left align horizontally
     let text_x = x_pos + 5.0; // Small padding from left
 
-    // Create text content stream
+    // Convert text to UTF-16BE bytes for Identity-H encoding
+    let utf16_bytes: Vec<u8> = display_text.encode_utf16()
+        .flat_map(|c| c.to_be_bytes())
+        .collect();
+
+    // Create text content stream with proper character spacing
     let operations = vec![
         // Begin text object
         Operation::new("BT", vec![]),
@@ -2116,15 +2201,25 @@ fn render_text_field(
             Object::Real(0.0),
         ]),
 
+        // Set character spacing to 0 (compact characters)
+        Operation::new("Tc", vec![
+            Object::Real(0.0),
+        ]),
+
+        // Set horizontal scaling to 100% (normal width)
+        Operation::new("Tz", vec![
+            Object::Real(100.0),
+        ]),
+
         // Position text at center
         Operation::new("Td", vec![
             Object::Real(text_x as f32),
             Object::Real(text_y as f32),
         ]),
 
-        // Show text
+        // Show text using Identity-H encoding with embedded font (use Literal format for better spacing)
         Operation::new("Tj", vec![
-            utf16be_hex(&display_text),
+            Object::String(utf16_bytes, StringFormat::Literal),
         ]),
 
         // End text object
