@@ -55,11 +55,6 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
     }
   };
 
-  const handleSkip = () => {
-    // For now, just call onSuccess - in a real app you might want to handle this differently
-    onSuccess();
-  };
-
   if (loading && !setupData) {
     return (
       <Box
@@ -88,12 +83,9 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
-        
-
           {setupData && (
             <Grid container spacing={4}>
-              {/* QR Code Section */}
-              <Grid item xs={12} md={6}>
+              <Grid>
                 <Card sx={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'white' }}>
                   <CardContent>
                     <Typography variant="body2" sx={{ mb: 2, opacity: 0.8 }}>
@@ -168,23 +160,6 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ onSuccess }) => {
                     >
                       {loading ? <CircularProgress size={24} /> : 'Verify & Enable 2FA'}
                     </Button>
-                    {/* <Typography variant="body2" sx={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                      If you can't scan the QR code, manually enter this secret:
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontFamily: 'monospace',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                        p: 1,
-                        borderRadius: 1,
-                        mt: 1,
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      {setupData.secret}
-                    </Typography> */}
                   </CardContent>
                 </Card>
               </Grid>

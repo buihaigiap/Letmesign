@@ -325,7 +325,7 @@ impl AccountQueries {
 impl UserQueries {
     pub async fn get_user_by_id(pool: &PgPool, id: i64) -> Result<Option<DbUser>, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, created_at, updated_at FROM users WHERE id = $1"
+            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, api_key, created_at, updated_at FROM users WHERE id = $1"
         )
         .bind(id)
         .fetch_optional(pool)
@@ -349,7 +349,7 @@ impl UserQueries {
                 initials: row.try_get("initials")?,
                 two_factor_secret: row.try_get("two_factor_secret")?,
                 two_factor_enabled: row.try_get("two_factor_enabled")?,
-                api_key: None, // Temporarily set to None until migration is applied
+                api_key: row.try_get("api_key")?,
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             })),
@@ -366,7 +366,7 @@ impl UserQueries {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, 
                      subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, 
-                     two_factor_enabled, created_at, updated_at
+                     two_factor_enabled, api_key, created_at, updated_at
             "#
         )
         .bind(&user_data.name)
@@ -398,7 +398,7 @@ impl UserQueries {
             initials: row.try_get("initials")?,
             two_factor_secret: row.try_get("two_factor_secret")?,
             two_factor_enabled: row.try_get("two_factor_enabled")?,
-            api_key: None, // Will be set later when API key is generated
+            api_key: row.try_get("api_key")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
@@ -406,7 +406,7 @@ impl UserQueries {
 
     pub async fn get_user_by_email(pool: &PgPool, email: &str) -> Result<Option<DbUser>, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, created_at, updated_at FROM users WHERE email = $1"
+            "SELECT id, name, email, password_hash, role, is_active, activation_token, account_id, archived_at, subscription_status, subscription_expires_at, free_usage_count, signature, initials, two_factor_secret, two_factor_enabled, api_key, created_at, updated_at FROM users WHERE email = $1"
         )
         .bind(email)
         .fetch_optional(pool)
@@ -430,7 +430,7 @@ impl UserQueries {
                 initials: row.try_get("initials")?,
                 two_factor_secret: row.try_get("two_factor_secret")?,
                 two_factor_enabled: row.try_get("two_factor_enabled")?,
-                api_key: None, // Temporarily set to None until migration is applied
+                api_key: row.try_get("api_key")?,
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             })),

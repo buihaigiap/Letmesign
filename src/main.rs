@@ -40,8 +40,6 @@ use models::template::Template;
         routes::web::update_user_invitation_handler,
         routes::web::delete_user_invitation_handler,
         routes::web::get_api_key_handler,
-        routes::web::generate_api_key_handler,
-        routes::web::revoke_api_key_handler,
         routes::templates::get_folders,
         routes::templates::create_folder,
         routes::templates::get_folder,
@@ -250,7 +248,7 @@ async fn main() {
         .layer(axum::middleware::from_fn_with_state(app_state.clone(), |State(state): State<Arc<Mutex<AppStateData>>>, mut request: Request<axum::body::Body>, next: Next| async move {
             let pool = state.lock().await.db_pool.clone();
             request.extensions_mut().insert(pool);
-            Ok::<_, axum::http::StatusCode>(next.run(request).await)
+            Ok::<axum::http::Response<axum::body::Body>, axum::http::StatusCode>(next.run(request).await)
         }))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB limit for file uploads
         .layer(CorsLayer::permissive())

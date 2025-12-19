@@ -181,7 +181,6 @@ pub async fn get_me(
                     "created_at": user.created_at,
                     "two_factor_enabled": user.two_factor_enabled,
                     "oauth_tokens": oauth_tokens,
-                    "api_key": user.api_key,
                 }
             });
             

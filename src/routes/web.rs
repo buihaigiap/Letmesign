@@ -49,7 +49,7 @@ use crate::routes::global_settings;
 use crate::routes::email_templates;
 use crate::routes::team;
 use crate::routes::pdf_signature;
-use crate::common::jwt::{generate_jwt, auth_middleware, combined_auth_middleware};
+use crate::common::jwt::{generate_jwt, generate_temp_2fa_token, auth_middleware, combined_auth_middleware};
 
 pub fn create_router() -> Router<AppState> {
     println!("Creating router...");
@@ -73,11 +73,12 @@ pub fn create_router() -> Router<AppState> {
         // .route("/subscription/payment-link", get(subscription::get_payment_link))
         .route("/auth/2fa/setup", get(setup_2fa_handler))
         .route("/auth/2fa/verify", post(verify_2fa_handler))
+        .route("/auth/2fa/verify-action", post(verify_2fa_action_handler))
         .route("/auth/logout", post(logout_handler))
         .route("/auth/google-drive/status", get(google_drive_status_handler))
         .route("/auth/api-key", get(get_api_key_handler))
-        .route("/auth/api-key/generate", post(generate_api_key_handler))
-        .route("/auth/api-key/revoke", post(revoke_api_key_handler))
+        .route("/auth/api-key/verify-2fa", post(verify_api_key_2fa_handler))
+        .route("/auth/api-key/rotate", post(rotate_api_key_handler))
         .merge(submissions::create_submission_router())
         .merge(reminder_settings::create_router())
         .merge(global_settings::create_router())
@@ -89,6 +90,7 @@ pub fn create_router() -> Router<AppState> {
     let public_routes = Router::new()
         .route("/auth/register", post(register_handler))
         .route("/auth/login", post(login_handler))
+        .route("/auth/login/2fa", post(verify_2fa_login_handler))
         .route("/auth/activate", post(activate_user))
         .route("/auth/set-password", post(set_password_handler))
         .route("/auth/forgot-password", post(forgot_password_handler))
@@ -217,6 +219,72 @@ pub async fn login_handler(
                 Ok(true) => {
                     let user: User = db_user.into();
 
+                    // Check global settings for 2FA enforcement
+                    match GlobalSettingsQueries::get_global_settings(pool).await {
+                        Ok(Some(global_settings)) => {
+                            if global_settings.force_2fa_with_authenticator_app {
+                                // 2FA is enforced globally
+                                if !user.two_factor_enabled {
+                                    // User doesn't have 2FA enabled, but it's required
+                                    let response = serde_json::json!({
+                                        "success": false,
+                                        "status_code": 403,
+                                        "message": "Two-factor authentication is required but not enabled for this account",
+                                        "data": null,
+                                        "error": "Two-factor authentication is required but not enabled for this account. Please enable 2FA first."
+                                    });
+                                    return (StatusCode::FORBIDDEN, Json(response));
+                                } else {
+                                    // 2FA is required and enabled - generate temp token for 2FA verification
+                                    let jwt_secret = std::env::var("JWT_SECRET")
+                                        .unwrap_or_else(|_| "your-secret-key".to_string());
+
+                                    match generate_temp_2fa_token(user.id, &user.email, &jwt_secret) {
+                                        Ok(temp_token) => {
+                                            let two_factor_response = TwoFactorRequiredResponse {
+                                                requires_2fa: true,
+                                                temp_token,
+                                                user_id: user.id,
+                                            };
+                                            let response = serde_json::json!({
+                                                "success": true,
+                                                "status_code": 200,
+                                                "message": "2FA verification required",
+                                                "data": two_factor_response,
+                                                "error": null
+                                            });
+                                            return (StatusCode::OK, Json(response));
+                                        }
+                                        Err(_) => {
+                                            let response = serde_json::json!({
+                                                "success": false,
+                                                "status_code": 500,
+                                                "message": "Internal Server Error",
+                                                "data": null,
+                                                "error": "Failed to generate temporary token"
+                                            });
+                                            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            // No global settings found, proceed without 2FA enforcement
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to get global settings: {}", e);
+                            let response = serde_json::json!({
+                                "success": false,
+                                "status_code": 500,
+                                "message": "Internal Server Error",
+                                "data": null,
+                                "error": "Failed to check global settings"
+                            });
+                            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+                        }
+                    }
+
                     // No 2FA required, proceed with normal login
                     let jwt_secret = std::env::var("JWT_SECRET")
                         .unwrap_or_else(|_| "your-secret-key".to_string());
@@ -288,6 +356,255 @@ pub async fn login_handler(
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
         }
     }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/login/2fa",
+    tag = "auth",
+    request_body = Verify2FALoginRequest,
+    responses(
+        (status = 200, description = "2FA verification successful", body = ApiResponse<LoginResponse>),
+        (status = 401, description = "Invalid 2FA code or expired token", body = ApiResponse<LoginResponse>)
+    )
+)]
+pub async fn verify_2fa_login_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<Verify2FALoginRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let pool = &state.lock().await.db_pool;
+
+    // Verify the temporary token
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "your-secret-key".to_string());
+
+    let claims = match crate::common::jwt::verify_jwt(&payload.temp_token, &jwt_secret) {
+        Ok(claims) => {
+            // Check if this is a 2FA pending token
+            if claims.role != "2fa_pending" {
+                let response = serde_json::json!({
+                    "success": false,
+                    "status_code": 401,
+                    "message": "Invalid token",
+                    "data": null,
+                    "error": "Invalid temporary token"
+                });
+                return (StatusCode::UNAUTHORIZED, Json(response));
+            }
+            claims
+        }
+        Err(_) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "Invalid or expired token",
+                "data": null,
+                "error": "Invalid or expired temporary token"
+            });
+            return (StatusCode::UNAUTHORIZED, Json(response));
+        }
+    };
+
+    // Get user from database
+    let user = match UserQueries::get_user_by_id(pool, claims.sub).await {
+        Ok(Some(db_user)) => {
+            // Check if user is archived
+            if db_user.archived_at.is_some() {
+                let response = serde_json::json!({
+                    "success": false,
+                    "status_code": 403,
+                    "message": "Forbidden",
+                    "data": null,
+                    "error": "This account has been archived and cannot log in. Please contact your administrator."
+                });
+                return (StatusCode::FORBIDDEN, Json(response));
+            }
+
+            // Check if 2FA is still enabled
+            if !db_user.two_factor_enabled || db_user.two_factor_secret.is_none() {
+                let response = serde_json::json!({
+                    "success": false,
+                    "status_code": 401,
+                    "message": "2FA is no longer enabled for this account",
+                    "data": null,
+                    "error": "2FA verification failed"
+                });
+                return (StatusCode::UNAUTHORIZED, Json(response));
+            }
+
+            crate::models::user::User::from(db_user)
+        }
+        Ok(None) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "User not found",
+                "data": null,
+                "error": "User not found"
+            });
+            return (StatusCode::UNAUTHORIZED, Json(response));
+        }
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "Database error"
+            });
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+        }
+    };
+
+    // Verify the 2FA code
+    match crate::common::two_factor::verify_2fa_code(&user.two_factor_secret.as_ref().unwrap(), &payload.code) {
+        Ok(true) => {
+            // 2FA verification successful, generate final JWT token
+            match generate_jwt(user.id, &user.email, &user.role, &jwt_secret) {
+                Ok(token) => {
+                    let login_response = LoginResponse { token, user };
+                    let response = serde_json::json!({
+                        "success": true,
+                        "status_code": 200,
+                        "message": "Login successful",
+                        "data": login_response,
+                        "error": null
+                    });
+                    (StatusCode::OK, Json(response))
+                }
+                Err(_) => {
+                    let response = serde_json::json!({
+                        "success": false,
+                        "status_code": 500,
+                        "message": "Internal Server Error",
+                        "data": null,
+                        "error": "Failed to generate token"
+                    });
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
+                }
+            }
+        }
+        Ok(false) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "Invalid 2FA code",
+                "data": null,
+                "error": "Invalid verification code"
+            });
+            (StatusCode::UNAUTHORIZED, Json(response))
+        }
+        Err(e) => {
+            eprintln!("2FA verification error: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "2FA verification failed"
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/2fa/verify-action",
+    tag = "auth",
+    request_body = Verify2FAActionRequest,
+    responses(
+        (status = 200, description = "2FA verification successful", body = ApiResponse<String>),
+        (status = 401, description = "Invalid 2FA code", body = ApiResponse<String>)
+    )
+)]
+pub async fn verify_2fa_action_handler(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<i64>,
+    Json(payload): Json<Verify2FAActionRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let pool = &state.lock().await.db_pool;
+
+    // Get user from database
+    let user = match UserQueries::get_user_by_id(pool, user_id).await {
+        Ok(Some(db_user)) => {
+            // Check if 2FA is enabled
+            if !db_user.two_factor_enabled || db_user.two_factor_secret.is_none() {
+                let response = serde_json::json!({
+                    "success": false,
+                    "status_code": 400,
+                    "message": "2FA is not enabled for this account",
+                    "data": null,
+                    "error": "2FA is not enabled for this account"
+                });
+                return (StatusCode::BAD_REQUEST, Json(response));
+            }
+
+            crate::models::user::User::from(db_user)
+        }
+        Ok(None) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "User not found",
+                "data": null,
+                "error": "User not found"
+            });
+            return (StatusCode::UNAUTHORIZED, Json(response));
+        }
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "Database error"
+            });
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+        }
+    };
+
+    // Verify the 2FA code
+    match crate::common::two_factor::verify_2fa_code(&user.two_factor_secret.as_ref().unwrap(), &payload.code) {
+        Ok(true) => {
+            let response = serde_json::json!({
+                "success": true,
+                "status_code": 200,
+                "message": "2FA verification successful",
+                "data": "verified",
+                "error": null
+            });
+            (StatusCode::OK, Json(response))
+        }
+        Ok(false) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "Invalid 2FA code",
+                "data": null,
+                "error": "Invalid verification code"
+            });
+            (StatusCode::UNAUTHORIZED, Json(response))
+        }
+        Err(e) => {
+            eprintln!("2FA verification error: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "2FA verification failed"
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
+        }
+    }
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct Verify2FAActionRequest {
+    pub code: String,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -2146,35 +2463,149 @@ pub struct Verify2FALoginRequest {
 pub async fn get_api_key_handler(
     Extension(user_id): Extension<i64>,
     State(state): State<AppState>,
-) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+) -> (StatusCode, Json<serde_json::Value>) {
     let pool = &state.lock().await.db_pool;
     
+    // Get user from database
+    let user = match UserQueries::get_user_by_id(pool, user_id).await {
+        Ok(Some(db_user)) => crate::models::user::User::from(db_user),
+        Ok(None) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 404,
+                "message": "Not Found",
+                "data": null,
+                "error": "User not found"
+            });
+            return (StatusCode::NOT_FOUND, Json(response));
+        }
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "Database error"
+            });
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+        }
+    };
+
+    // Check global settings for 2FA enforcement
+    match GlobalSettingsQueries::get_global_settings(pool).await {
+        Ok(Some(global_settings)) => {
+            if global_settings.force_2fa_with_authenticator_app {
+                // 2FA is enforced globally
+                if !user.two_factor_enabled {
+                    // User doesn't have 2FA enabled, but it's required
+                    let response = serde_json::json!({
+                        "success": false,
+                        "status_code": 403,
+                        "message": "Forbidden",
+                        "data": null,
+                        "error": "Two-factor authentication is required but not enabled for this account"
+                    });
+                    return (StatusCode::FORBIDDEN, Json(response));
+                } else {
+                    // 2FA is required and enabled - generate temp token for 2FA verification
+                    let jwt_secret = std::env::var("JWT_SECRET")
+                        .unwrap_or_else(|_| "your-secret-key".to_string());
+
+                    match generate_temp_2fa_token(user.id, &user.email, &jwt_secret) {
+                        Ok(temp_token) => {
+                            let response = serde_json::json!({
+                                "success": false,
+                                "status_code": 200,
+                                "message": "2FA verification required",
+                                "data": {
+                                    "requires_2fa": true,
+                                    "temp_token": temp_token
+                                },
+                                "error": null
+                            });
+                            return (StatusCode::OK, Json(response));
+                        }
+                        Err(_) => {
+                            let response = serde_json::json!({
+                                "success": false,
+                                "status_code": 500,
+                                "message": "Internal Server Error",
+                                "data": null,
+                                "error": "Failed to generate temporary token"
+                            });
+                            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(None) => {
+            // No global settings found, proceed without 2FA enforcement
+        }
+        Err(e) => {
+            eprintln!("Failed to get global settings: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "Failed to check global settings"
+            });
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+        }
+    }
+
+    // No 2FA required, return API key
     match UserQueries::get_user_by_id(pool, user_id).await {
         Ok(Some(db_user)) => {
             let response = serde_json::json!({
-                "api_key": db_user.api_key
+                "success": true,
+                "status_code": 200,
+                "message": "API key retrieved",
+                "data": {
+                    "api_key": db_user.api_key
+                },
+                "error": null
             });
-            ApiResponse::success(response, "API key retrieved".to_string())
+            (StatusCode::OK, Json(response))
         },
-        Ok(None) => ApiResponse::not_found("User not found".to_string()),
+        Ok(None) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 404,
+                "message": "Not Found",
+                "data": null,
+                "error": "User not found"
+            });
+            (StatusCode::NOT_FOUND, Json(response))
+        },
         Err(e) => {
             eprintln!("Failed to get user API key: {}", e);
-            ApiResponse::internal_error("Failed to retrieve API key".to_string())
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "Failed to retrieve API key"
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
         }
     }
 }
 
+
 #[utoipa::path(
     post,
-    path = "/api/auth/api-key/generate",
+    path = "/api/auth/api-key/rotate",
     tag = "auth",
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "Generate new API key for user", body = ApiResponse),
+        (status = 200, description = "Rotate API key for user", body = ApiResponse),
         (status = 401, description = "Unauthorized")
     )
 )]
-pub async fn generate_api_key_handler(
+pub async fn rotate_api_key_handler(
     Extension(user_id): Extension<i64>,
     State(state): State<AppState>,
 ) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
@@ -2187,40 +2618,163 @@ pub async fn generate_api_key_handler(
             let response = serde_json::json!({
                 "api_key": api_key
             });
-            ApiResponse::success(response, "API key generated successfully".to_string())
+            ApiResponse::success(response, "API key rotated successfully".to_string())
         },
         Err(e) => {
-            eprintln!("Failed to generate API key: {}", e);
-            ApiResponse::internal_error("Failed to generate API key".to_string())
+            eprintln!("Failed to rotate API key: {}", e);
+            ApiResponse::internal_error("Failed to rotate API key".to_string())
         }
     }
 }
+
 
 #[utoipa::path(
     post,
-    path = "/api/auth/api-key/revoke",
+    path = "/api/auth/api-key/verify-2fa",
     tag = "auth",
-    security(("bearerAuth" = [])),
+    request_body = Verify2FALoginRequest,
     responses(
-        (status = 200, description = "Revoke current user's API key", body = ApiResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 200, description = "2FA verification successful", body = serde_json::Value),
+        (status = 401, description = "Invalid 2FA code or expired token", body = serde_json::Value)
     )
 )]
-pub async fn revoke_api_key_handler(
-    Extension(user_id): Extension<i64>,
+pub async fn verify_api_key_2fa_handler(
     State(state): State<AppState>,
-) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+    Json(payload): Json<Verify2FALoginRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
     let pool = &state.lock().await.db_pool;
-    
-    match UserQueries::revoke_user_api_key(pool, user_id).await {
-        Ok(_) => {
-            ApiResponse::success(serde_json::json!({}), "API key revoked successfully".to_string())
-        },
+
+    // Verify the temporary token
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "your-secret-key".to_string());
+
+    let claims = match crate::common::jwt::verify_jwt(&payload.temp_token, &jwt_secret) {
+        Ok(claims) => {
+            // Check if this is a 2FA pending token
+            if claims.role != "2fa_pending" {
+                let response = serde_json::json!({
+                    "success": false,
+                    "status_code": 401,
+                    "message": "Invalid token",
+                    "data": null,
+                    "error": "Invalid temporary token"
+                });
+                return (StatusCode::UNAUTHORIZED, Json(response));
+            }
+            claims
+        }
+        Err(_) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "Invalid or expired token",
+                "data": null,
+                "error": "Invalid or expired temporary token"
+            });
+            return (StatusCode::UNAUTHORIZED, Json(response));
+        }
+    };
+
+    // Get user from database
+    let user = match UserQueries::get_user_by_id(pool, claims.sub).await {
+        Ok(Some(db_user)) => {
+            // Check if 2FA is still enabled
+            if !db_user.two_factor_enabled || db_user.two_factor_secret.is_none() {
+                let response = serde_json::json!({
+                    "success": false,
+                    "status_code": 401,
+                    "message": "2FA is no longer enabled for this account",
+                    "data": null,
+                    "error": "2FA verification failed"
+                });
+                return (StatusCode::UNAUTHORIZED, Json(response));
+            }
+
+            crate::models::user::User::from(db_user)
+        }
+        Ok(None) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "User not found",
+                "data": null,
+                "error": "User not found"
+            });
+            return (StatusCode::UNAUTHORIZED, Json(response));
+        }
         Err(e) => {
-            eprintln!("Failed to revoke API key: {}", e);
-            ApiResponse::internal_error("Failed to revoke API key".to_string())
+            eprintln!("Database error: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "Database error"
+            });
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+        }
+    };
+
+    // Verify the 2FA code
+    match crate::common::two_factor::verify_2fa_code(&user.two_factor_secret.as_ref().unwrap(), &payload.code) {
+        Ok(true) => {
+            // 2FA verification successful, return API key
+            match UserQueries::get_user_by_id(pool, user.id).await {
+                Ok(Some(db_user)) => {
+                    let response = serde_json::json!({
+                        "success": true,
+                        "status_code": 200,
+                        "message": "API key retrieved",
+                        "data": {
+                            "api_key": db_user.api_key
+                        },
+                        "error": null
+                    });
+                    (StatusCode::OK, Json(response))
+                }
+                Ok(None) => {
+                    let response = serde_json::json!({
+                        "success": false,
+                        "status_code": 404,
+                        "message": "User not found",
+                        "data": null,
+                        "error": "User not found"
+                    });
+                    (StatusCode::NOT_FOUND, Json(response))
+                }
+                Err(e) => {
+                    eprintln!("Failed to get user API key: {}", e);
+                    let response = serde_json::json!({
+                        "success": false,
+                        "status_code": 500,
+                        "message": "Internal Server Error",
+                        "data": null,
+                        "error": "Failed to retrieve API key"
+                    });
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
+                }
+            }
+        }
+        Ok(false) => {
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 401,
+                "message": "Invalid 2FA code",
+                "data": null,
+                "error": "Invalid verification code"
+            });
+            (StatusCode::UNAUTHORIZED, Json(response))
+        }
+        Err(e) => {
+            eprintln!("2FA verification error: {}", e);
+            let response = serde_json::json!({
+                "success": false,
+                "status_code": 500,
+                "message": "Internal Server Error",
+                "data": null,
+                "error": "2FA verification failed"
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
         }
     }
 }
-
-

@@ -9,6 +9,10 @@ const upstashService = {
         const url = '/api/auth/login';
         return await axiosClient.post(url, data)
     },
+    verify2FALogin: async (data: any): Promise<any> => {
+        const url = '/api/auth/login/2fa';
+        return await axiosClient.post(url, data)
+    },
     Register: async (data: any): Promise<any> => {
         const url = '/api/auth/register';
         return await axiosClient.post(url, data)
@@ -48,12 +52,8 @@ const upstashService = {
         const url = '/api/auth/api-key';
         return await axiosClient.get(url)
     },
-    generateApiKey: async (): Promise<any> => {
-        const url = '/api/auth/api-key/generate';
-        return await axiosClient.post(url)
-    },
-    revokeApiKey: async (): Promise<any> => {
-        const url = '/api/auth/api-key/revoke';
+    rotateApiKey: async (): Promise<any> => {
+        const url = '/api/auth/api-key/rotate';
         return await axiosClient.post(url)
     },
 
@@ -271,6 +271,10 @@ const upstashService = {
     },
     verify2FA: async (data: any): Promise<any> => {
         const url = '/api/auth/2fa/verify';
+        return await axiosClient.post(url, data)
+    },
+    verify2FAAction: async (data: any): Promise<any> => {
+        const url = '/api/auth/2fa/verify-action';
         return await axiosClient.post(url, data)
     },
 

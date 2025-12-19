@@ -39,6 +39,25 @@ pub fn generate_jwt(user_id: i64, email: &str, role: &Role, secret: &str) -> Res
     encode(&header, &claims, &encoding_key)
 }
 
+pub fn generate_temp_2fa_token(user_id: i64, email: &str, secret: &str) -> Result<String, Error> {
+    let expiration = Utc::now()
+        .checked_add_signed(Duration::minutes(10)) // Short-lived token for 2FA
+        .expect("valid timestamp")
+        .timestamp() as usize;
+
+    let claims = Claims {
+        sub: user_id,
+        email: email.to_owned(),
+        role: "2fa_pending".to_string(), // Special role to indicate 2FA pending
+        exp: expiration,
+    };
+
+    let header = Header::new(Algorithm::HS256);
+    let encoding_key = EncodingKey::from_secret(secret.as_ref());
+
+    encode(&header, &claims, &encoding_key)
+}
+
 pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, Error> {
     let decoding_key = DecodingKey::from_secret(secret.as_ref());
     let validation = Validation::new(Algorithm::HS256);

@@ -21,7 +21,7 @@ use sqlx::PgPool;
 
 use crate::routes::web::AppState;
 
-use crate::common::utils::replace_template_variables;
+use crate::common::utils::{replace_template_variables, generate_api_key};
 
 
 #[utoipa::path(
@@ -161,7 +161,27 @@ pub async fn get_me(
 
     match UserQueries::get_user_by_id(pool, user_id).await {
         Ok(Some(db_user)) => {
-            let user = crate::models::user::User::from(db_user);
+            let mut user = crate::models::user::User::from(db_user.clone());
+            
+            // Generate API key if user doesn't have one
+            if user.api_key.is_none() {
+                let api_key = crate::common::utils::generate_api_key();
+                match UserQueries::generate_user_api_key(pool, user_id, &api_key).await {
+                    Ok(_) => {
+                        user.api_key = Some(api_key);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to generate API key for user {}: {}", user_id, e);
+                        let response = serde_json::json!({
+                            "success": false,
+                            "message": "Internal Server Error",
+                            "data": null,
+                            "error": "Failed to generate API key"
+                        });
+                        return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+                    }
+                }
+            }
             
             // Get OAuth tokens for this user
             let oauth_tokens = match crate::database::queries::OAuthTokenQueries::get_oauth_token(pool, user_id, "google").await {
@@ -192,7 +212,6 @@ pub async fn get_me(
                     "created_at": user.created_at,
                     "two_factor_enabled": user.two_factor_enabled,
                     "oauth_tokens": oauth_tokens,
-                    "api_key": user.api_key,
                 }
             });
             
